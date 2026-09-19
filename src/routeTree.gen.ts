@@ -14,6 +14,7 @@ import { Route as WorkspaceRouteImport } from './routes/_workspace'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as WorkspaceContextRouteImport } from './routes/_workspace/context'
 import { Route as WorkspaceDecisionsRouteImport } from './routes/_workspace/decisions'
+import { Route as ApiVoiceTokenRouteImport } from './routes/api/voice-token'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as WorkspaceContextIndexRouteImport } from './routes/_workspace/context.index'
 import { Route as WorkspaceContextTopicIdRouteImport } from './routes/_workspace/context.$topicId'
@@ -47,6 +48,11 @@ const WorkspaceDecisionsRoute = WorkspaceDecisionsRouteImport.update({
   id: '/decisions',
   path: '/decisions',
   getParentRoute: () => WorkspaceRoute,
+} as any)
+const ApiVoiceTokenRoute = ApiVoiceTokenRouteImport.update({
+  id: '/api/voice-token',
+  path: '/api/voice-token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
@@ -100,6 +106,7 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteRouteWithChildren
   '/context': typeof WorkspaceContextRouteWithChildren
   '/decisions': typeof WorkspaceDecisionsRouteWithChildren
+  '/api/voice-token': typeof ApiVoiceTokenRoute
   '/app/': typeof AppIndexRoute
   '/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/voice-token': typeof ApiVoiceTokenRoute
   '/app': typeof AppIndexRoute
   '/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/_workspace': typeof WorkspaceRouteWithChildren
   '/_workspace/context': typeof WorkspaceContextRouteWithChildren
   '/_workspace/decisions': typeof WorkspaceDecisionsRouteWithChildren
+  '/api/voice-token': typeof ApiVoiceTokenRoute
   '/app/': typeof AppIndexRoute
   '/_workspace/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/_workspace/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/context'
     | '/decisions'
+    | '/api/voice-token'
     | '/app/'
     | '/context/$topicId'
     | '/decisions/$decisionId'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api/voice-token'
     | '/app'
     | '/context/$topicId'
     | '/decisions/$decisionId'
@@ -174,6 +185,7 @@ export interface FileRouteTypes {
     | '/_workspace'
     | '/_workspace/context'
     | '/_workspace/decisions'
+    | '/api/voice-token'
     | '/app/'
     | '/_workspace/context/$topicId'
     | '/_workspace/decisions/$decisionId'
@@ -189,6 +201,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
+  ApiVoiceTokenRoute: typeof ApiVoiceTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/decisions'
       preLoaderRoute: typeof WorkspaceDecisionsRouteImport
       parentRoute: typeof WorkspaceRoute
+    }
+    '/api/voice-token': {
+      id: '/api/voice-token'
+      path: '/api/voice-token'
+      fullPath: '/api/voice-token'
+      preLoaderRoute: typeof ApiVoiceTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/app/': {
       id: '/app/'
@@ -358,6 +378,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
   WorkspaceRoute: WorkspaceRouteWithChildren,
+  ApiVoiceTokenRoute: ApiVoiceTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

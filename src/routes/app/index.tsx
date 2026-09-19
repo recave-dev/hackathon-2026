@@ -2,6 +2,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { ChevronDownIcon, ChevronRightIcon, ScaleIcon, SquareCheckIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { VoiceArtifact } from '@/components/app/voice-artifact'
 import { toast } from '@/components/ui/toast'
 import { firstName, formatDue, formatDuration, plural } from '@/demo/format'
 import { openTasks, pendingDecisions, personName } from '@/demo/selectors'
@@ -9,6 +10,17 @@ import { SCRIPTED_TRANSCRIPT } from '@/demo/seed'
 import { actions, getDemoState, useDemoState } from '@/demo/store'
 import type { DemoState, Id, SessionPhase } from '@/demo/types'
 import { cn } from '@/lib/utils'
+import {
+  SHOW_ON_SCREEN,
+  VOICE_TOOLS,
+  buildInstructions,
+  buildKeyterms,
+  describeArtifact,
+  parseArtifact,
+  type ScreenArtifact,
+} from '@/lib/voice/agent-tools'
+import type { VoicePhase } from '@/lib/voice/grok-voice'
+import { VoiceUnavailableError, useGrokVoice } from '@/lib/voice/use-grok-voice'
 import type { OrbState } from '@/registry/lib/orb-state'
 import { NebulaOrb } from '@/registry/orbe/nebula-orb/nebula-orb'
 
@@ -36,6 +48,15 @@ const TALK_ORB: Record<TalkPhase, OrbState> = {
   speaking: 'speaking',
   listening: 'listening',
   thinking: 'thinking',
+}
+
+const VOICE_ORB: Record<VoicePhase, OrbState> = {
+  off: 'idle',
+  connecting: 'connecting',
+  listening: 'listening',
+  thinking: 'thinking',
+  speaking: 'speaking',
+  error: 'error',
 }
 
 /** Scripted voice exchange: the agent speaks, waits, "thinks", then continues until it runs out of lines. */
@@ -132,6 +153,27 @@ function AppScreen() {
   const talk = useAgentTalk(lines)
   const { items, more } = useMemo(() => actionItems(state), [state])
 
+  // Live voice agent (Grok speech-to-speech). Falls back to the scripted talk
+  // above when the server has no XAI_API_KEY, so the demo never dead-ends.
+  const levelRef = useRef(-1)
+  const [artifact, setArtifact] = useState<ScreenArtifact | undefined>()
+  const voice = useGrokVoice({
+    instructions: buildInstructions(state),
+    keyterms: buildKeyterms(state),
+    tools: VOICE_TOOLS,
+    levelRef,
+    onToolCall: (name, args) => {
+      if (name !== SHOW_ON_SCREEN) return { ok: false, error: `Nieznane narzędzie ${name}` }
+      const current = getDemoState()
+      const parsed = parseArtifact(current, args)
+      if ('error' in parsed) return { ok: false, error: parsed.error }
+      setArtifact(parsed.artifact)
+      return { ok: true, shown: describeArtifact(current, parsed.artifact) }
+    },
+    onError: (message) => toast.add({ type: 'error', title: 'Agent głosowy', description: message }),
+  })
+  const anyTalk = talk.active || voice.active
+
   const isLive = phase === 'recording' || phase === 'paused'
   const isBusy = isLive || phase === 'processing'
   const scriptDone = session.revealed >= SCRIPTED_TRANSCRIPT.length
@@ -172,20 +214,39 @@ function AppScreen() {
     return () => window.clearTimeout(id)
   }, [phase])
 
-  const orbState: OrbState = talk.active ? TALK_ORB[talk.phase] : SESSION_ORB[phase]
-  const caption = talk.active
-    ? talk.phase === 'connecting'
+  const orbState: OrbState = voice.active ? VOICE_ORB[voice.phase] : talk.active ? TALK_ORB[talk.phase] : SESSION_ORB[phase]
+  const caption = voice.active
+    ? voice.phase === 'connecting'
       ? 'Łączę…'
-      : talk.phase === 'thinking'
+      : voice.phase === 'thinking'
         ? '…'
-        : talk.line
-    : isLive
-      ? lastSegment?.text ?? 'Słucham…'
-      : phase === 'processing'
-        ? 'Porządkuję…'
-        : undefined
+        : voice.caption ?? (voice.phase === 'listening' ? 'Słucham…' : undefined)
+    : talk.active
+      ? talk.phase === 'connecting'
+        ? 'Łączę…'
+        : talk.phase === 'thinking'
+          ? '…'
+          : talk.line
+      : isLive
+        ? lastSegment?.text ?? 'Słucham…'
+        : phase === 'processing'
+          ? 'Porządkuję…'
+          : undefined
 
-  const toggleTalk = () => (talk.active ? talk.stop() : talk.start())
+  const toggleTalk = async () => {
+    if (voice.active) return voice.stop()
+    if (talk.active) return talk.stop()
+    try {
+      await voice.start()
+    } catch (err) {
+      if (err instanceof VoiceUnavailableError) {
+        toast.add({ type: 'info', title: 'Tryb demo', description: 'Brak klucza xAI, odtwarzam skrypt.' })
+        talk.start()
+        return
+      }
+      toast.add({ type: 'error', title: 'Agent głosowy', description: err instanceof Error ? err.message : String(err) })
+    }
+  }
   const toggleRecord = () => (isLive ? actions.stopRecording() : actions.startRecording())
 
   return (
@@ -194,31 +255,42 @@ function AppScreen() {
         <div className="flex flex-col items-center gap-6">
           <button
             type="button"
-            onClick={toggleTalk}
+            onClick={() => void toggleTalk()}
             disabled={isBusy}
-            aria-pressed={talk.active}
-            aria-label={talk.active ? 'Zakończ rozmowę z agentem' : 'Rozmawiaj z agentem'}
+            aria-pressed={anyTalk}
+            aria-label={anyTalk ? 'Zakończ rozmowę z agentem' : 'Rozmawiaj z agentem'}
             className="rounded-full outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-4 focus-visible:ring-offset-background motion-safe:active:scale-95 disabled:cursor-default"
           >
-            <NebulaOrb state={orbState} size={220} colorFrom={ORB_COLORS.from} colorTo={ORB_COLORS.to} label="" className="pointer-events-none" />
+            <NebulaOrb
+              state={orbState}
+              size={220}
+              colorFrom={ORB_COLORS.from}
+              colorTo={ORB_COLORS.to}
+              levelRef={levelRef}
+              label=""
+              className="pointer-events-none"
+            />
           </button>
 
           <p
             role="status"
             aria-live="polite"
             className={cn(
-              'min-h-10 max-w-xs text-center text-sm leading-relaxed text-muted-foreground transition-opacity duration-300',
+              'min-h-10 max-w-xs text-center text-sm leading-relaxed transition-opacity duration-300',
+              voice.captionFrom === 'user' ? 'text-muted-foreground/70 italic' : 'text-muted-foreground',
               caption ? 'opacity-100' : 'opacity-0',
             )}
           >
             {caption}
           </p>
+
+          {artifact && <VoiceArtifact artifact={artifact} onClose={() => setArtifact(undefined)} />}
         </div>
 
         <button
           type="button"
           onClick={toggleRecord}
-          disabled={talk.active || phase === 'processing'}
+          disabled={anyTalk || phase === 'processing'}
           aria-label={isLive ? 'Zakończ transkrypcję' : 'Rozpocznij transkrypcję'}
           className="group flex flex-col items-center gap-2 outline-none disabled:opacity-40"
         >
