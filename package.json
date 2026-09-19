@@ -20,7 +20,8 @@
     "demo": "node scripts/demo.ts",
     "import:synthetic": "node scripts/import-synthetic.ts",
     "agent:support": "node scripts/run-agent.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "jev:eval": "node --env-file=.env scripts/jev-eval.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -32,6 +33,7 @@
     "@tanstack/react-router": "latest",
     "@tanstack/react-router-devtools": "latest",
     "@tanstack/react-start": "latest",
+    "@typesafe-ai/sdk": "^0.6.0",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.3.0",

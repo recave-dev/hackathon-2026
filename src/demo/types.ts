@@ -255,6 +255,37 @@ export interface ContextTopic {
   updatedAt: string
 }
 
+export type ConnectorKind = 'slack' | 'email' | 'meetings'
+
+/** Lifecycle of a mocked integration: OAuth → first sync → live. */
+export type ConnectorStatus = 'disconnected' | 'connecting' | 'syncing' | 'connected' | 'paused'
+
+/** A channel, mailbox label or calendar the connector may read. */
+export interface ConnectorScope {
+  id: Id
+  label: string
+  hint: string
+  /** How many items a sync of this scope brings in. */
+  count: number
+  enabled: boolean
+}
+
+export interface Connector {
+  id: Id
+  kind: ConnectorKind
+  name: string
+  provider: string
+  description: string
+  status: ConnectorStatus
+  /** Workspace, mailbox or Google account once connected. */
+  account?: string
+  connectedAt?: string
+  lastSyncAt?: string
+  scopes: ConnectorScope[]
+  /** What the mocked consent screen asks for. */
+  permissions: string[]
+}
+
 export interface DemoState {
   version: number
   now: string
@@ -268,6 +299,7 @@ export interface DemoState {
   changes: Change[]
   meetings: Meeting[]
   contexts: ContextTopic[]
+  connectors: Connector[]
   notes: Note[]
   session: SessionState
 }

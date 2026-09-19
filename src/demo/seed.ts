@@ -1,4 +1,5 @@
 import type {
+  Connector,
   ContextTopic,
   Decision,
   DecisionOption,
@@ -9,7 +10,7 @@ import type {
   TranscriptSegment,
 } from './types'
 
-export const STATE_VERSION = 4
+export const STATE_VERSION = 5
 
 /** Fixed demo clock: Tuesday, 10 November 2026, 09:00 (local time). */
 export const DEMO_NOW = '2026-11-10T09:00:00'
@@ -797,6 +798,68 @@ export const SCRIPTED_ITEMS: ExtractedItem[] = [
   },
 ]
 
+/** Integrations the workspace can plug in. All start disconnected so the setup flow can be shown live. */
+export const INITIAL_CONNECTORS: Connector[] = [
+  {
+    id: 'conn-slack',
+    kind: 'slack',
+    name: 'Slack',
+    provider: 'Slack Workspace',
+    description: 'Kanały, w których zapadają ustalenia: zakupy, zarząd, wdrożenia. Agent czyta wybrane kanały i wiąże wiadomości ze sprawami.',
+    status: 'disconnected',
+    scopes: [
+      { id: 'ch-purchase', label: '#purchase-requests', hint: 'Wnioski zakupowe · Michał Baran akceptuje', count: 48, enabled: true },
+      { id: 'ch-zarzad', label: '#zarzad', hint: 'Ustalenia zarządu · 5 osób', count: 212, enabled: true },
+      { id: 'ch-alfa', label: '#alfa-wdrozenie', hint: 'Kanał projektu Alfa · z klientem', count: 1310, enabled: true },
+      { id: 'ch-sales', label: '#sales', hint: 'Pipeline i oferty', count: 640, enabled: false },
+      { id: 'ch-random', label: '#random', hint: 'Bez ustaleń · pomijany', count: 2980, enabled: false },
+    ],
+    permissions: [
+      'Odczyt wiadomości w wybranych kanałach publicznych',
+      'Odczyt listy kanałów i użytkowników',
+      'Wysyłanie wiadomości jako Droker (pytania do osób)',
+    ],
+  },
+  {
+    id: 'conn-email',
+    kind: 'email',
+    name: 'Email',
+    provider: 'Google Workspace · Gmail',
+    description: 'Skrzynka CEO i alias faktur. Agent wyciąga ustalenia z klientami, kwoty z faktur i terminy z korespondencji.',
+    status: 'disconnected',
+    scopes: [
+      { id: 'mb-inbox', label: 'Skrzynka odbiorcza', hint: 'tomasz@droker.pl · ostatnie 12 miesięcy', count: 3420, enabled: true },
+      { id: 'mb-invoices', label: 'Etykieta „Faktury”', hint: 'Faktury SaaS i dostawców', count: 96, enabled: true },
+      { id: 'mb-alias', label: 'faktury@droker.pl', hint: 'Alias współdzielony z finansami', count: 410, enabled: true },
+      { id: 'mb-sent', label: 'Wysłane', hint: 'Zobowiązania złożone przez CEO', count: 1870, enabled: false },
+    ],
+    permissions: [
+      'Odczyt wiadomości i załączników w wybranych etykietach',
+      'Odczyt metadanych (nadawca, data, wątek)',
+      'Tworzenie szkiców odpowiedzi — bez wysyłania',
+    ],
+  },
+  {
+    id: 'conn-meetings',
+    kind: 'meetings',
+    name: 'Meetings',
+    provider: 'Google Meet · Google Calendar',
+    description: 'Spotkania z kalendarza. Agent dołącza do Meet jako notatnik, transkrybuje i po spotkaniu proponuje ustalenia i decyzje.',
+    status: 'disconnected',
+    scopes: [
+      { id: 'cal-main', label: 'Kalendarz Tomasza', hint: 'Wszystkie spotkania z linkiem Meet', count: 64, enabled: true },
+      { id: 'cal-zarzad', label: 'Zarząd — cotygodniowe', hint: 'Kalendarz współdzielony · poniedziałki 9:00', count: 18, enabled: true },
+      { id: 'cal-clients', label: 'Klienci — Alfa i Gamma', hint: 'Spotkania zewnętrzne · pyta o zgodę na nagranie', count: 27, enabled: true },
+      { id: 'cal-11', label: 'Spotkania 1:1', hint: 'Prywatne · pomijane domyślnie', count: 41, enabled: false },
+    ],
+    permissions: [
+      'Odczyt wydarzeń w wybranych kalendarzach',
+      'Dołączanie do spotkań Google Meet jako uczestnik „Droker Notes”',
+      'Odczyt transkrypcji i nagrań Meet po spotkaniu',
+    ],
+  },
+]
+
 export function newSessionId(): Id {
   return `session-${Math.random().toString(36).slice(2, 8)}`
 }
@@ -827,6 +890,7 @@ export function createSeedState(): DemoState {
     changes: structuredClone(INITIAL_CHANGES),
     meetings: structuredClone(INITIAL_MEETINGS),
     contexts: structuredClone(CONTEXT_TOPICS),
+    connectors: structuredClone(INITIAL_CONNECTORS),
     notes: [],
     session: createSession(),
   }

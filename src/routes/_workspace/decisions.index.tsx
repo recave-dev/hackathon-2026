@@ -1,8 +1,9 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ClockIcon, FilesIcon } from 'lucide-react'
+import { ClockIcon, FilesIcon, SparklesIcon } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { EmptyHint, PageHeader, Pill } from '@/components/desktop/page'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDateTime, formatDue, isOverdue } from '@/demo/format'
 import { STATUS_LABEL, decisionsFor, personName, projectLabel, type DecisionFilter } from '@/demo/selectors'
@@ -39,6 +40,11 @@ function Decisions() {
       <PageHeader
         title="Decisions"
         description="Sprawy zebrane przez agenta z maili, Slacka i notatek. Decyzje zatwierdza się w widoku mobilnym; tutaj jest pełny kontekst i historia."
+        action={
+          <Button nativeButton={false} render={<Link to="/decisions/new" />}>
+            <SparklesIcon /> Nowa sprawa
+          </Button>
+        }
       />
       <Tabs value={filter} onValueChange={(value) => void navigate({ search: { filter: value as DecisionFilter } })}>
         <TabsList aria-label="Filtr spraw" className="h-9">

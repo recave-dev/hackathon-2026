@@ -12,6 +12,7 @@ import {
 } from './seed'
 import type {
   Activity,
+  Connector,
   Decision,
   DemoState,
   ExecutionStep,
@@ -118,10 +119,105 @@ const replaceDecision = (draft: DemoState, next: Decision): void => {
   draft.decisions = draft.decisions.map((d) => (d.id === next.id ? next : d))
 }
 
+const replaceConnector = (draft: DemoState, next: Connector): void => {
+  draft.connectors = draft.connectors.map((c) => (c.id === next.id ? next : c))
+}
+
+const findConnector = (draft: DemoState, id: Id): Connector | undefined => draft.connectors.find((c) => c.id === id)
+
 export const actions = {
   resetDemo(): void {
     load()
     setState(createSeedState())
+  },
+
+  /** Adds a decision drafted from the company graph to the pending queue; returns its id. */
+  createDecision(
+    input: Omit<Decision, 'id' | 'createdAt' | 'status' | 'questions' | 'execution'>,
+    sources: Source[],
+  ): Id {
+    const id = uid('dec')
+    update((draft, now) => {
+      const known = new Set(draft.sources.map((s) => s.id))
+      draft.sources = [...draft.sources, ...sources.filter((s) => !known.has(s.id))]
+      draft.decisions = [{ ...input, id, status: 'pending', createdAt: now, questions: [], execution: [] }, ...draft.decisions]
+      pushActivity(
+        draft,
+        { actor: 'user', text: `Utworzono sprawę „${input.title}” na podstawie ${sources.length} źródeł z grafu firmy.`, link: { type: 'decision', id } },
+        now,
+      )
+    })
+    return id
+  },
+
+  /** Mocked OAuth: the consent screen was accepted, the handshake is "in flight". */
+  beginConnect(id: Id, account: string): void {
+    update((draft) => {
+      const c = findConnector(draft, id)
+      if (!c || c.status !== 'disconnected') return
+      replaceConnector(draft, { ...c, status: 'connecting', account })
+    })
+  },
+
+  /** Handshake done; the first import starts. */
+  startSync(id: Id): void {
+    update((draft, now) => {
+      const c = findConnector(draft, id)
+      if (!c || c.status !== 'connecting') return
+      replaceConnector(draft, { ...c, status: 'syncing', connectedAt: now })
+    })
+  },
+
+  /** Import finished; the connector is live. Also used for manual re-syncs. */
+  finishSync(id: Id): void {
+    update((draft, now) => {
+      const c = findConnector(draft, id)
+      if (!c || c.status !== 'syncing') return
+      const first = !c.lastSyncAt
+      replaceConnector(draft, { ...c, status: 'connected', lastSyncAt: now })
+      if (first) {
+        const imported = c.scopes.filter((s) => s.enabled).reduce((sum, s) => sum + s.count, 0)
+        pushActivity(
+          draft,
+          { actor: 'system', text: `Połączono ${c.name} (${c.account}). Zaimportowano ${imported.toLocaleString('pl-PL')} elementów.` },
+          now,
+        )
+      }
+    })
+  },
+
+  resync(id: Id): void {
+    update((draft) => {
+      const c = findConnector(draft, id)
+      if (!c || c.status !== 'connected') return
+      replaceConnector(draft, { ...c, status: 'syncing' })
+    })
+  },
+
+  setConnectorPaused(id: Id, paused: boolean): void {
+    update((draft) => {
+      const c = findConnector(draft, id)
+      if (!c) return
+      if (paused && c.status === 'connected') replaceConnector(draft, { ...c, status: 'paused' })
+      if (!paused && c.status === 'paused') replaceConnector(draft, { ...c, status: 'connected' })
+    })
+  },
+
+  toggleConnectorScope(id: Id, scopeId: Id, enabled: boolean): void {
+    update((draft) => {
+      const c = findConnector(draft, id)
+      if (!c) return
+      replaceConnector(draft, { ...c, scopes: c.scopes.map((s) => (s.id === scopeId ? { ...s, enabled } : s)) })
+    })
+  },
+
+  disconnectConnector(id: Id): void {
+    update((draft, now) => {
+      const c = findConnector(draft, id)
+      if (!c || c.status === 'disconnected') return
+      replaceConnector(draft, { ...c, status: 'disconnected', account: undefined, connectedAt: undefined, lastSyncAt: undefined })
+      pushActivity(draft, { actor: 'system', text: `Odłączono ${c.name}. Zaimportowane dane pozostają w Context.` }, now)
+    })
   },
 
   setSessionMode(mode: SessionMode): void {

@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkspaceRouteImport } from './routes/_workspace'
 import { Route as AppRouteRouteImport } from './routes/app/route'
+import { Route as MeetingRouteImport } from './routes/meeting'
+import { Route as WorkspaceConnectorsRouteImport } from './routes/_workspace/connectors'
 import { Route as WorkspaceContextRouteImport } from './routes/_workspace/context'
 import { Route as WorkspaceDecisionsRouteImport } from './routes/_workspace/decisions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
@@ -19,6 +21,7 @@ import { Route as WorkspaceContextIndexRouteImport } from './routes/_workspace/c
 import { Route as WorkspaceContextTopicIdRouteImport } from './routes/_workspace/context.$topicId'
 import { Route as WorkspaceDecisionsIndexRouteImport } from './routes/_workspace/decisions.index'
 import { Route as WorkspaceDecisionsDecisionIdRouteImport } from './routes/_workspace/decisions.$decisionId'
+import { Route as WorkspaceDecisionsNewRouteImport } from './routes/_workspace/decisions.new'
 import { Route as AppDecisionsIndexRouteImport } from './routes/app/decisions.index'
 import { Route as AppDecisionsDecisionIdRouteImport } from './routes/app/decisions.$decisionId'
 import { Route as AppMeetingsMeetingIdRouteImport } from './routes/app/meetings.$meetingId'
@@ -37,6 +40,16 @@ const AppRouteRoute = AppRouteRouteImport.update({
   id: '/app',
   path: '/app',
   getParentRoute: () => rootRouteImport,
+} as any)
+const MeetingRoute = MeetingRouteImport.update({
+  id: '/meeting',
+  path: '/meeting',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WorkspaceConnectorsRoute = WorkspaceConnectorsRouteImport.update({
+  id: '/connectors',
+  path: '/connectors',
+  getParentRoute: () => WorkspaceRoute,
 } as any)
 const WorkspaceContextRoute = WorkspaceContextRouteImport.update({
   id: '/context',
@@ -74,6 +87,11 @@ const WorkspaceDecisionsDecisionIdRoute =
     path: '/$decisionId',
     getParentRoute: () => WorkspaceDecisionsRoute,
   } as any)
+const WorkspaceDecisionsNewRoute = WorkspaceDecisionsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => WorkspaceDecisionsRoute,
+} as any)
 const AppDecisionsIndexRoute = AppDecisionsIndexRouteImport.update({
   id: '/decisions/',
   path: '/decisions/',
@@ -98,11 +116,14 @@ const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
+  '/meeting': typeof MeetingRoute
+  '/connectors': typeof WorkspaceConnectorsRoute
   '/context': typeof WorkspaceContextRouteWithChildren
   '/decisions': typeof WorkspaceDecisionsRouteWithChildren
   '/app/': typeof AppIndexRoute
   '/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
+  '/decisions/new': typeof WorkspaceDecisionsNewRoute
   '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
   '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
   '/app/notes/$noteId': typeof AppNotesNoteIdRoute
@@ -112,9 +133,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/meeting': typeof MeetingRoute
+  '/connectors': typeof WorkspaceConnectorsRoute
   '/app': typeof AppIndexRoute
   '/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
+  '/decisions/new': typeof WorkspaceDecisionsNewRoute
   '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
   '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
   '/app/notes/$noteId': typeof AppNotesNoteIdRoute
@@ -127,11 +151,14 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
   '/_workspace': typeof WorkspaceRouteWithChildren
+  '/meeting': typeof MeetingRoute
+  '/_workspace/connectors': typeof WorkspaceConnectorsRoute
   '/_workspace/context': typeof WorkspaceContextRouteWithChildren
   '/_workspace/decisions': typeof WorkspaceDecisionsRouteWithChildren
   '/app/': typeof AppIndexRoute
   '/_workspace/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/_workspace/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
+  '/_workspace/decisions/new': typeof WorkspaceDecisionsNewRoute
   '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
   '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
   '/app/notes/$noteId': typeof AppNotesNoteIdRoute
@@ -144,11 +171,14 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/meeting'
+    | '/connectors'
     | '/context'
     | '/decisions'
     | '/app/'
     | '/context/$topicId'
     | '/decisions/$decisionId'
+    | '/decisions/new'
     | '/app/decisions/$decisionId'
     | '/app/meetings/$meetingId'
     | '/app/notes/$noteId'
@@ -158,9 +188,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/meeting'
+    | '/connectors'
     | '/app'
     | '/context/$topicId'
     | '/decisions/$decisionId'
+    | '/decisions/new'
     | '/app/decisions/$decisionId'
     | '/app/meetings/$meetingId'
     | '/app/notes/$noteId'
@@ -172,11 +205,14 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/_workspace'
+    | '/meeting'
+    | '/_workspace/connectors'
     | '/_workspace/context'
     | '/_workspace/decisions'
     | '/app/'
     | '/_workspace/context/$topicId'
     | '/_workspace/decisions/$decisionId'
+    | '/_workspace/decisions/new'
     | '/app/decisions/$decisionId'
     | '/app/meetings/$meetingId'
     | '/app/notes/$noteId'
@@ -189,6 +225,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
+  MeetingRoute: typeof MeetingRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -213,6 +250,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/meeting': {
+      id: '/meeting'
+      path: '/meeting'
+      fullPath: '/meeting'
+      preLoaderRoute: typeof MeetingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_workspace/connectors': {
+      id: '/_workspace/connectors'
+      path: '/connectors'
+      fullPath: '/connectors'
+      preLoaderRoute: typeof WorkspaceConnectorsRouteImport
+      parentRoute: typeof WorkspaceRoute
     }
     '/_workspace/context': {
       id: '/_workspace/context'
@@ -261,6 +312,13 @@ declare module '@tanstack/react-router' {
       path: '/$decisionId'
       fullPath: '/decisions/$decisionId'
       preLoaderRoute: typeof WorkspaceDecisionsDecisionIdRouteImport
+      parentRoute: typeof WorkspaceDecisionsRoute
+    }
+    '/_workspace/decisions/new': {
+      id: '/_workspace/decisions/new'
+      path: '/new'
+      fullPath: '/decisions/new'
+      preLoaderRoute: typeof WorkspaceDecisionsNewRouteImport
       parentRoute: typeof WorkspaceDecisionsRoute
     }
     '/app/decisions/': {
@@ -329,11 +387,13 @@ const WorkspaceContextRouteWithChildren =
 
 interface WorkspaceDecisionsRouteChildren {
   WorkspaceDecisionsDecisionIdRoute: typeof WorkspaceDecisionsDecisionIdRoute
+  WorkspaceDecisionsNewRoute: typeof WorkspaceDecisionsNewRoute
   WorkspaceDecisionsIndexRoute: typeof WorkspaceDecisionsIndexRoute
 }
 
 const WorkspaceDecisionsRouteChildren: WorkspaceDecisionsRouteChildren = {
   WorkspaceDecisionsDecisionIdRoute: WorkspaceDecisionsDecisionIdRoute,
+  WorkspaceDecisionsNewRoute: WorkspaceDecisionsNewRoute,
   WorkspaceDecisionsIndexRoute: WorkspaceDecisionsIndexRoute,
 }
 
@@ -341,11 +401,13 @@ const WorkspaceDecisionsRouteWithChildren =
   WorkspaceDecisionsRoute._addFileChildren(WorkspaceDecisionsRouteChildren)
 
 interface WorkspaceRouteChildren {
+  WorkspaceConnectorsRoute: typeof WorkspaceConnectorsRoute
   WorkspaceContextRoute: typeof WorkspaceContextRouteWithChildren
   WorkspaceDecisionsRoute: typeof WorkspaceDecisionsRouteWithChildren
 }
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+  WorkspaceConnectorsRoute: WorkspaceConnectorsRoute,
   WorkspaceContextRoute: WorkspaceContextRouteWithChildren,
   WorkspaceDecisionsRoute: WorkspaceDecisionsRouteWithChildren,
 }
@@ -358,16 +420,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
   WorkspaceRoute: WorkspaceRouteWithChildren,
+  MeetingRoute: MeetingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
