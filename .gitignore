@@ -12,5 +12,7 @@ dist-ssr
 __unconfig*
 todos.json
 *.sqlite
+!knowledge/synthetic/demo-v2-2025-05-12.sqlite
+!knowledge/synthetic/demo-v2-2025-11-19.sqlite
 *.sqlite-shm
 *.sqlite-wal
