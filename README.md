@@ -195,3 +195,19 @@ Loaders simplify your data fetching logic dramatically. Check out more informati
 You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
 
 For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+
+## Decision graph prototype
+
+The repository also contains a TypeScript ingestion core for the CEO decision workspace. It indexes Markdown by section, looks up existing entities, accepts a structured LLM graph patch, validates exact source quotes and relation types, previews a diff, and applies accepted changes to SQLite. The original files remain the source of truth.
+
+The graph demo and tests require Node 24.9 or newer for built-in SQLite and TypeScript type stripping:
+
+```sh
+npm test
+npm run demo
+npm run typecheck
+```
+
+`npm run demo` uses a deterministic extractor fixture and does not make a cloud call. To try the OpenAI adapter, set `OPENAI_API_KEY` and `OPENAI_MODEL`, then run `npm run demo -- --live`. The adapter has not been live-tested against a cloud account.
+
+The graph can be imported from `./src/graph/index.ts` in server-side application code. `KnowledgeGraph` provides `ingestDocument`, `applyProposal`, `searchNodes`, `searchChunks`, and `buildDecisionContext`. The context method returns cited evidence for a later synthesis call; it does not generate a recommendation or a numeric forecast. See [the ingestion design](docs/graph-and-ingestion-design.md) and [project ideas](docs/glossary/project-ideas.md).

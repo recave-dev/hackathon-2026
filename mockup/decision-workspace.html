@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d1110">
+  <title>Decision workspace | Aster Systems</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1110;
+      --nav: #101513;
+      --surface: #161c19;
+      --surface-raised: #1b231e;
+      --line: #2b352f;
+      --line-strong: #465449;
+      --text: #eff3ee;
+      --muted: #a3aea4;
+      --faint: #728078;
+      --accent: #c8ef82;
+      --accent-soft: #263321;
+      --radius: 16px;
+      font-family: "Avenir Next", "Segoe UI", Arial, sans-serif;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    a { color: inherit; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .app-shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100dvh; }
+    .sidebar { background: var(--nav); border-right: 1px solid var(--line); padding: 27px 16px 21px; display: flex; flex-direction: column; gap: 31px; position: sticky; top: 0; height: 100dvh; }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 0 12px; font-weight: 720; letter-spacing: -.045em; font-size: 19px; }
+    .brand-mark { width: 28px; height: 28px; border: 1.5px solid var(--accent); border-radius: 8px; display: grid; place-items: center; position: relative; }
+    .brand-mark::before, .brand-mark::after { content: ""; position: absolute; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+    .brand-mark::before { left: 6px; top: 8px; }
+    .brand-mark::after { right: 6px; bottom: 7px; }
+    .brand-mark span { width: 10px; height: 1px; background: var(--accent); transform: rotate(-33deg); }
+    .nav-group-label { color: var(--faint); font-size: 10px; letter-spacing: .15em; text-transform: uppercase; margin: 0 12px 10px; font-weight: 700; }
+    .nav-list { display: grid; gap: 4px; }
+    .nav-item { border: 0; color: var(--muted); background: transparent; border-radius: 10px; min-height: 40px; display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0 12px; text-align: left; font-size: 13px; }
+    .nav-item:hover { color: var(--text); background: #1b231f; }
+    .nav-item.active { color: var(--accent); background: var(--accent-soft); font-weight: 650; }
+    .nav-count { font-size: 11px; opacity: .74; }
+    .sidebar-bottom { margin-top: auto; border-top: 1px solid var(--line); padding: 19px 10px 0; }
+    .company-name { font-size: 13px; font-weight: 650; }
+    .company-meta { margin-top: 4px; color: var(--faint); font-size: 11px; line-height: 1.5; }
+    .workspace { min-width: 0; }
+    .topbar { min-height: 64px; padding: 0 38px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+    .breadcrumbs { display: flex; align-items: center; gap: 9px; color: var(--faint); font-size: 12px; white-space: nowrap; }
+    .breadcrumbs strong { color: var(--text); font-weight: 600; }
+    .topbar-right { display: flex; align-items: center; gap: 15px; color: var(--muted); font-size: 11px; }
+    .sync-dot { width: 6px; height: 6px; display: inline-block; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; }
+    .avatar { width: 27px; height: 27px; border-radius: 50%; display: grid; place-items: center; background: #313d32; color: var(--text); font-size: 10px; font-weight: 700; }
+    main { max-width: 1500px; margin: 0 auto; padding: 30px 38px 52px; }
+    .heading { margin-bottom: 26px; }
+    .kicker { color: var(--accent); font-size: 10px; letter-spacing: .15em; font-weight: 700; text-transform: uppercase; margin-bottom: 11px; }
+    .heading-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; }
+    h1 { font-size: clamp(27px, 2.65vw, 42px); letter-spacing: -.052em; line-height: 1.09; font-weight: 620; max-width: 760px; margin: 0; }
+    .heading-sub { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 12px 0 0; }
+    .heading-meta { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 19px; }
+    .meta-pill { border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 6px 9px; font-size: 11px; }
+    .meta-pill.strong { background: var(--accent-soft); color: var(--accent); border-color: #4e6840; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; border-radius: 9px; border: 1px solid var(--line-strong); background: #202923; color: var(--text); padding: 11px 14px; font-size: 12px; font-weight: 650; min-height: 39px; transition: background .18s ease, border-color .18s ease, transform .18s ease; }
+    .button:hover { background: #2b372e; border-color: #6b7c6d; transform: translateY(-1px); }
+    .button.primary { background: var(--accent); color: #172015; border-color: var(--accent); }
+    .button.primary:hover { background: #ddffa2; border-color: #ddffa2; }
+    .button.ghost { background: transparent; }
+    .section-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 19px 22px; border-bottom: 1px solid var(--line); }
+    .panel-title { display: flex; align-items: baseline; gap: 10px; }
+    .panel-title h2 { font-size: 15px; letter-spacing: -.02em; font-weight: 650; margin: 0; }
+    .panel-caption { color: var(--faint); font-size: 11px; }
+    .subtle-action { background: none; border: 0; color: var(--muted); font-size: 11px; padding: 4px 0; }
+    .subtle-action:hover { color: var(--accent); }
+    .graph-panel { margin-bottom: 16px; }
+    .graph-canvas { position: relative; min-height: 347px; padding: 27px 28px 24px; overflow: hidden; background: radial-gradient(ellipse at 50% 42%, #212b22 0%, #18201b 37%, #161c19 72%); }
+    .graph-canvas::before { content: ""; position: absolute; inset: 0; opacity: .17; pointer-events: none; background-image: radial-gradient(circle, #8a9b8a .75px, transparent 1px); background-size: 21px 21px; }
+    .graph-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: .88; }
+    .graph-lines path { fill: none; stroke: #3a4b3d; stroke-width: 1.4; }
+    .graph-lines path.major { stroke: #77905f; stroke-width: 1.8; }
+    .graph-columns { position: relative; z-index: 1; display: grid; grid-template-columns: 29% 33% 29%; justify-content: space-between; align-items: center; min-height: 294px; gap: 10px; }
+    .node-column { display: grid; gap: 9px; align-content: center; }
+    .graph-label { font-size: 10px; color: var(--faint); letter-spacing: .13em; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
+    .graph-node { text-align: left; width: 100%; min-height: 57px; border: 1px solid #3a493d; background: #1e2821; color: var(--text); border-radius: 10px; padding: 9px 12px; position: relative; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+    .graph-node:hover, .graph-node:focus-visible { border-color: var(--accent); background: #263327; transform: translateY(-1px); }
+    .graph-node small { display: block; font-size: 9px; letter-spacing: .12em; color: #b7c8b5; text-transform: uppercase; margin-bottom: 3px; }
+    .graph-node span { font-size: 12px; line-height: 1.25; display: block; font-weight: 580; }
+    .graph-node .node-value { color: var(--accent); font-size: 10px; margin-top: 3px; font-family: "SFMono-Regular", Consolas, monospace; }
+    .center-column { display: flex; align-items: center; justify-content: center; }
+    .decision-node { width: min(100%, 273px); background: #28372a; border: 1px solid #83a270; box-shadow: 0 0 0 7px rgba(198, 239, 130, .035), 0 16px 48px rgba(0, 0, 0, .14); padding: 19px 18px 17px; border-radius: 14px; text-align: center; }
+    .decision-node .core-icon { width: 31px; height: 31px; display: grid; place-items: center; margin: 0 auto 12px; background: var(--accent); color: #1a2317; border-radius: 8px; font-size: 16px; font-weight: 800; }
+    .decision-node .core-label { color: var(--accent); font-size: 9px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+    .decision-node h3 { font-size: 16px; line-height: 1.25; letter-spacing: -.025em; font-weight: 630; margin: 7px 0 10px; }
+    .decision-node p { color: #b7c5b8; margin: 0; font-size: 10px; }
+    .graph-note { padding: 11px 22px 12px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 14px; color: var(--muted); font-size: 11px; }
+    .graph-note strong { color: var(--text); font-weight: 600; }
+    .lower-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 16px; align-items: stretch; }
+    .tabs { display: flex; gap: 6px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+    .tab { color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 13px 8px 11px; margin-right: 12px; font-size: 11px; font-weight: 650; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { padding: 8px 20px 11px; min-height: 248px; }
+    .evidence-row { display: flex; gap: 13px; padding: 15px 2px; border-bottom: 1px solid #28312b; }
+    .evidence-row:last-child { border-bottom: 0; }
+    .evidence-bullet { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+    .evidence-bullet.dim { background: #758375; }
+    .evidence-copy { flex: 1; min-width: 0; }
+    .evidence-copy p { margin: 0 0 5px; font-size: 12px; line-height: 1.43; }
+    .evidence-copy small { color: var(--faint); font-size: 10px; line-height: 1.45; display: block; }
+    .source-link { border: 0; background: transparent; padding: 0; color: var(--accent); font-size: 10px; font-weight: 700; margin-left: 9px; }
+    .source-link:hover { text-decoration: underline; }
+    .research-button { margin-top: 16px; }
+    .options-inner { padding: 16px 20px 17px; }
+    .option-list { display: grid; gap: 7px; }
+    .option { width: 100%; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; background: #1a221d; border: 1px solid #354138; color: var(--text); border-radius: 10px; padding: 11px 12px; text-align: left; }
+    .option:hover { background: #202b23; border-color: #627562; }
+    .option.selected { background: #253326; border-color: #87aa69; }
+    .radio { width: 15px; height: 15px; border: 1.5px solid #6c7d6e; border-radius: 50%; display: grid; place-items: center; }
+    .option.selected .radio { border-color: var(--accent); }
+    .option.selected .radio::after { content: ""; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; }
+    .option-name { font-size: 12px; font-weight: 650; display: block; }
+    .option-detail { color: var(--faint); font-size: 10px; margin-top: 3px; display: block; }
+    .option-value { font-size: 13px; font-weight: 680; white-space: nowrap; }
+    .option-value small { font-size: 9px; color: var(--faint); font-weight: 500; display: block; text-align: right; margin-top: 2px; }
+    .assumption { margin-top: 15px; padding: 13px 14px; border-radius: 10px; background: #1e2720; border: 1px solid #354338; }
+    .assumption-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 9px; }
+    .assumption-head label { font-size: 11px; color: var(--muted); }
+    .assumption input[type=number] { width: 44px; height: 25px; background: #111713; border: 1px solid #556656; border-radius: 5px; color: var(--text); text-align: center; font-size: 11px; }
+    .assumption input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    .assumption-foot { display: flex; justify-content: space-between; color: var(--faint); font-size: 9px; margin-top: 2px; }
+    .option-insight { font-size: 11px; line-height: 1.5; color: var(--muted); margin: 14px 1px 0; }
+    .source-panel { margin-top: 16px; }
+    .source-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+    .source-tile { border: 0; border-right: 1px solid var(--line); background: transparent; text-align: left; color: var(--text); padding: 18px 20px 20px; min-height: 92px; }
+    .source-tile:last-child { border-right: 0; }
+    .source-tile:hover { background: #202923; }
+    .source-type { color: var(--accent); text-transform: uppercase; font-size: 9px; letter-spacing: .12em; font-weight: 750; }
+    .source-tile strong { display: block; font-size: 11px; margin-top: 7px; font-weight: 630; line-height: 1.4; }
+    .source-tile small { display: block; color: var(--faint); margin-top: 4px; font-size: 9px; }
+    dialog { color: var(--text); background: #1a221d; border: 1px solid #526251; border-radius: 15px; padding: 0; width: min(520px, calc(100% - 32px)); box-shadow: 0 30px 90px rgba(0,0,0,.55); }
+    dialog::backdrop { background: rgba(0,0,0,.7); backdrop-filter: blur(3px); }
+    .dialog-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 21px 23px 16px; border-bottom: 1px solid var(--line); }
+    .dialog-kicker { color: var(--accent); font-size: 9px; text-transform: uppercase; letter-spacing: .14em; font-weight: 750; }
+    .dialog-head h2 { margin: 7px 0 0; font-size: 20px; line-height: 1.2; letter-spacing: -.03em; }
+    .close { background: transparent; border: 1px solid var(--line); color: var(--muted); width: 29px; height: 29px; border-radius: 7px; font-size: 18px; line-height: 1; }
+    .close:hover { color: var(--text); border-color: var(--accent); }
+    .dialog-body { padding: 20px 23px 23px; }
+    .dialog-body p { color: var(--muted); font-size: 12px; line-height: 1.58; margin: 0 0 15px; }
+    .excerpt { background: #222c24; border-left: 2px solid var(--accent); color: var(--text); padding: 14px 16px; font-size: 13px; line-height: 1.55; border-radius: 0 8px 8px 0; }
+    .dialog-meta { color: var(--faint); font-size: 10px; line-height: 1.55; margin-top: 15px; }
+    .source-original { display: inline-block; color: var(--accent); font-size: 11px; font-weight: 650; margin-top: 14px; text-decoration: none; }
+    .source-original:hover { text-decoration: underline; }
+    .form-field { display: grid; gap: 7px; margin-bottom: 15px; }
+    .form-field label { font-size: 11px; color: var(--muted); }
+    .form-field input, .form-field textarea { background: #101612; border: 1px solid #49584c; border-radius: 8px; color: var(--text); width: 100%; padding: 10px 11px; font-size: 12px; }
+    .form-field textarea { min-height: 82px; resize: vertical; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 19px; }
+    @media (max-width: 1180px) {
+      .app-shell { grid-template-columns: 70px minmax(0, 1fr); }
+      .sidebar { align-items: center; padding-left: 8px; padding-right: 8px; }
+      .brand { padding: 0; }
+      .brand-name, .nav-group-label, .nav-item span, .nav-count, .sidebar-bottom { display: none; }
+      .nav-item { width: 42px; justify-content: center; padding: 0; font-size: 0; }
+      .nav-item::before { content: attr(data-short); font-size: 11px; font-weight: 700; }
+      .graph-columns { grid-template-columns: 30% 33% 30%; }
+    }
+    @media (max-width: 900px) {
+      main { padding: 25px 24px 45px; }
+      .topbar { padding: 0 24px; }
+      .lower-grid { grid-template-columns: 1fr; }
+      .source-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .source-tile:nth-child(2) { border-right: 0; }
+      .source-tile:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    }
+    @media (max-width: 680px) {
+      .app-shell { display: block; }
+      .sidebar { position: static; height: auto; flex-direction: row; justify-content: space-between; align-items: center; padding: 12px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .brand-name { display: inline; }
+      .nav-list { display: flex; }
+      .nav-item { width: 32px; min-height: 32px; }
+      .sidebar > div:nth-child(2) { display: none; }
+      .topbar { min-height: 42px; padding: 0 16px; }
+      .topbar-right { display: none; }
+      main { padding: 22px 16px 42px; }
+      .heading-main { display: block; }
+      .heading-main .button { margin-top: 17px; }
+      .heading-meta { margin-top: 14px; }
+      .graph-canvas { padding: 20px 16px; }
+      .graph-lines { display: none; }
+      .graph-columns { display: grid; grid-template-columns: 1fr; gap: 17px; }
+      .node-column { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      .node-column .graph-label { grid-column: 1 / -1; }
+      .center-column { order: -1; }
+      .decision-node { width: 100%; }
+      .graph-node { min-height: 62px; }
+      .graph-note { display: block; }
+      .graph-note span { display: block; margin-top: 4px; }
+      .source-strip { grid-template-columns: 1fr; }
+      .source-tile { border-right: 0; border-bottom: 1px solid var(--line); min-height: 76px; }
+      .source-tile:last-child { border-bottom: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .button, .graph-node { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><span></span></span><span class="brand-name">decision<span style="color:var(--accent)">.</span>graph</span></div>
+      <div>
+        <div class="nav-group-label">Workspace</div>
+        <nav class="nav-list" aria-label="Primary">
+          <button class="nav-item" data-short="OV" type="button"><span>Overview</span></button>
+          <button class="nav-item active" data-short="DE" type="button" aria-current="page"><span>Decisions</span><span class="nav-count">03</span></button>
+          <button class="nav-item" data-short="SI" type="button"><span>Signals</span><span class="nav-count">08</span></button>
+          <button class="nav-item" data-short="GR" type="button"><span>Company graph</span></button>
+          <button class="nav-item" data-short="OU" type="button"><span>Outcomes</span></button>
+        </nav>
+      </div>
+      <div class="sidebar-bottom"><div class="company-name">Aster Systems</div><div class="company-meta">Synthetic company<br>Historical decision replay</div></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>Workspace</span><span>/</span><span>Decisions</span><span>/</span><strong>e-Doręczenia integration</strong></div>
+        <div class="topbar-right"><span><span class="sync-dot"></span>6 linked sources</span><span class="avatar">AS</span></div>
+      </header>
+      <main>
+        <div class="heading">
+          <div class="kicker">Product strategy / decision 01</div>
+          <div class="heading-main">
+            <div>
+              <h1>Build e-Doręczenia in-house or partner?</h1>
+              <p class="heading-sub">Aster Systems · Municipal document workflows · Evidence reviewed for the 12 May 2025 decision</p>
+            </div>
+            <button class="button primary" id="record-button" type="button">Record decision <span aria-hidden="true">↗</span></button>
+          </div>
+          <div class="heading-meta">
+            <span class="meta-pill strong" id="decision-status">In review</span>
+            <span class="meta-pill">Owner · CEO</span>
+            <span class="meta-pill">Review target · 12 Nov 2025</span>
+            <span class="meta-pill">Synthetic data</span>
+          </div>
+        </div>
+
+        <section class="section-panel graph-panel" aria-labelledby="graph-title">
+          <div class="panel-head"><div class="panel-title"><h2 id="graph-title">Decision context</h2><span class="panel-caption">The evidence path behind this decision</span></div><button class="subtle-action" id="graph-help" type="button">How this graph is built ↗</button></div>
+          <div class="graph-canvas">
+            <svg class="graph-lines" viewBox="0 0 1200 347" preserveAspectRatio="none" aria-hidden="true"><path d="M245 70 C420 70 400 174 535 174"/><path d="M245 133 C400 133 420 174 535 174"/><path class="major" d="M245 202 C400 202 420 174 535 174"/><path d="M245 266 C420 266 400 174 535 174"/><path d="M665 174 C790 174 790 81 942 81"/><path class="major" d="M665 174 C780 174 810 171 942 171"/><path d="M665 174 C790 174 790 261 942 261"/></svg>
+            <div class="graph-columns">
+              <div class="node-column">
+                <div class="graph-label">Evidence in the company graph</div>
+                <button class="graph-node" type="button" data-source="law"><small>External · Gov.pl</small><span>Public-sector rollout</span><span class="node-value">Effective from 2025</span></button>
+                <button class="graph-node" type="button" data-source="demand"><small>Customer evidence · Email</small><span>4 verified requests</span><span class="node-value">Municipal accounts</span></button>
+                <button class="graph-node" type="button" data-source="capacity"><small>Internal · Slack</small><span>2 engineers committed</span><span class="node-value">Roadmap constraint</span></button>
+                <button class="graph-node" type="button" data-source="history"><small>Prior decision · Notes</small><span>14 of 25 activated</span><span class="node-value">Demand forecast missed</span></button>
+              </div>
+              <div class="center-column"><div class="decision-node"><div class="core-icon" aria-hidden="true">↗</div><div class="core-label">Active decision</div><h3>e-Doręczenia integration</h3><p>6 linked sources · 3 paths</p></div></div>
+              <div class="node-column">
+                <div class="graph-label">Possible paths</div>
+                <button class="graph-node" type="button" data-option="build"><small>Option A</small><span>Build in-house</span><span class="node-value">16 weeks · full control</span></button>
+                <button class="graph-node" type="button" data-option="partner"><small>Option B</small><span>Partner connector</span><span class="node-value">6 weeks · vendor dependency</span></button>
+                <button class="graph-node" type="button" data-option="wait"><small>Option C</small><span>Postpone</span><span class="node-value">No immediate build cost</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="graph-note"><strong>Every material claim opens its source.</strong><span>Solid relationships are curated for this synthetic case · Select a node to inspect.</span></div>
+        </section>
+
+        <div class="lower-grid">
+          <section class="section-panel" aria-labelledby="evidence-title">
+            <div class="panel-head"><div class="panel-title"><h2 id="evidence-title">What the graph knows</h2><span class="panel-caption">Source-linked, not assumed true</span></div></div>
+            <div class="tabs" role="tablist" aria-label="Evidence categories"><button class="tab active" type="button" role="tab" aria-selected="true" data-tab="known">Known 4</button><button class="tab" type="button" role="tab" aria-selected="false" data-tab="conflicts">Conflicts 1</button><button class="tab" type="button" role="tab" aria-selected="false" data-tab="unknowns">Unknowns 2</button></div>
+            <div class="tab-content" id="evidence-content" role="tabpanel"></div>
+          </section>
+          <section class="section-panel" aria-labelledby="options-title">
+            <div class="panel-head"><div class="panel-title"><h2 id="options-title">Compare paths</h2><span class="panel-caption">Editable first-year assumptions</span></div><button class="subtle-action" id="method-button" type="button">Model method ↗</button></div>
+            <div class="options-inner">
+              <div class="option-list">
+                <button class="option" type="button" data-option="build" aria-pressed="false"><span class="radio"></span><span><span class="option-name">Build in-house</span><span class="option-detail">16 weeks · 18 paying customers assumed</span></span><span class="option-value">+140k <small>PLN first year</small></span></button>
+                <button class="option selected" type="button" data-option="partner" aria-pressed="true"><span class="radio"></span><span><span class="option-name">Partner connector</span><span class="option-detail" id="partner-detail">6 weeks · 22 paying customers assumed</span></span><span class="option-value" id="partner-value">+198k <small>PLN first year</small></span></button>
+                <button class="option" type="button" data-option="wait" aria-pressed="false"><span class="radio"></span><span><span class="option-name">Postpone</span><span class="option-detail">Preserve engineering capacity</span></span><span class="option-value">0 <small>PLN modelled</small></span></button>
+              </div>
+              <div class="assumption"><div class="assumption-head"><label for="customers-range">Partner paid-customer forecast</label><input type="number" id="customers-number" min="0" max="40" value="22" aria-label="Partner paid-customer forecast"></div><input type="range" id="customers-range" min="0" max="40" value="22" aria-label="Adjust partner paid-customer forecast"><div class="assumption-foot"><span>0 customers</span><span>40 customers</span></div></div>
+              <p class="option-insight" id="option-insight">Partner leads on current assumptions. Four written requests support demand; the forecast of 22 remains unverified.</p>
+            </div>
+          </section>
+        </div>
+
+        <section class="section-panel source-panel" aria-labelledby="sources-title"><div class="panel-head"><div class="panel-title"><h2 id="sources-title">Source ledger</h2><span class="panel-caption">Open the evidence behind the brief</span></div><span class="panel-caption">4 featured of 6 connected</span></div><div class="source-strip"><button class="source-tile" type="button" data-source="law"><span class="source-type">Gov.pl</span><strong>e-Doręczenia rollout schedule</strong><small>External · official source</small></button><button class="source-tile" type="button" data-source="demand"><span class="source-type">Email</span><strong>Four customer requests</strong><small>Account team · Apr–May 2025</small></button><button class="source-tile" type="button" data-source="capacity"><span class="source-type">Slack</span><strong>Engineering capacity thread</strong><small>#product-engineering · 8 May 2025</small></button><button class="source-tile" type="button" data-source="history"><span class="source-type">Decision note</span><strong>Prior digital-signature launch</strong><small>Expected 25 · actual 14</small></button></div></section>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="source-dialog" aria-labelledby="source-dialog-title"><div class="dialog-head"><div><div class="dialog-kicker" id="source-dialog-kicker">Source</div><h2 id="source-dialog-title">Evidence</h2></div><button class="close" type="button" data-close="source-dialog" aria-label="Close">×</button></div><div class="dialog-body"><p id="source-dialog-description"></p><div class="excerpt" id="source-dialog-excerpt"></div><div class="dialog-meta" id="source-dialog-meta"></div><a class="source-original" id="source-original" target="_blank" rel="noopener noreferrer" hidden>Open original official source ↗</a></div></dialog>
+  <dialog id="decision-dialog" aria-labelledby="decision-dialog-title"><div class="dialog-head"><div><div class="dialog-kicker">Decision record</div><h2 id="decision-dialog-title">Commit to a path</h2></div><button class="close" type="button" data-close="decision-dialog" aria-label="Close">×</button></div><form class="dialog-body" id="decision-form"><p>This mock stores the choice on this page only. No company data is sent anywhere.</p><div class="form-field"><label for="chosen-option">Selected path</label><input id="chosen-option" name="chosen-option" readonly></div><div class="form-field"><label for="decision-rationale">Reason for the decision</label><textarea id="decision-rationale" name="decision-rationale" required>Start with a partner pilot to validate paid demand before diverting engineering capacity.</textarea></div><div class="form-field"><label for="kpi-target">Six-month paid activation target</label><input id="kpi-target" name="kpi-target" type="number" min="0" value="10" required></div><div class="dialog-actions"><button class="button ghost" type="button" data-close="decision-dialog">Cancel</button><button class="button primary" type="submit">Save decision</button></div></form></dialog>
+  <dialog id="info-dialog" aria-labelledby="info-dialog-title"><div class="dialog-head"><div><div class="dialog-kicker">Design note</div><h2 id="info-dialog-title">How this works</h2></div><button class="close" type="button" data-close="info-dialog" aria-label="Close">×</button></div><div class="dialog-body"><p id="info-dialog-body"></p></div></dialog>
+
+  <script>
+    const sources = {
+      law: { kicker: 'Official external source', title: 'e-Doręczenia rollout schedule', description: 'The policy signal is linked to Aster Systems because its customers are municipal offices. This is a historical replay using a current official reference.', excerpt: 'The official schedule lists categories of public bodies and dates for the phased obligation to use e-Doręczenia.', meta: 'Source → public-sector obligation → municipal customer segment → integration decision. The law does not require customers to buy Aster software.', href: 'https://www.gov.pl/web/e-doreczenia/harmonogram' },
+      demand: { kicker: 'Customer evidence', title: 'Four written requests', description: 'These requests are synthetic demo messages from four separate municipal accounts.', excerpt: '“Can your document system handle e-Doręczenia directly? We need an integrated workflow for our team.”', meta: 'emails/customers.csv · Apr–May 2025 → 4 named requests → demand claim → this decision. A Slack claim of 12 interested accounts remains separate and unverified.' },
+      capacity: { kicker: 'Internal constraint', title: 'Engineering capacity', description: 'This synthetic Slack thread provides a technical estimate and a roadmap constraint.', excerpt: '“Building this ourselves is roughly 16 weeks with two engineers. Both are already committed to the workflow release.”', meta: '#product-engineering · 8 May 2025 → 16-week estimate + roadmap commitment → build option. Estimate, not an observed delivery date.' },
+      history: { kicker: 'Previous outcome', title: 'Digital-signature launch', description: 'A fictional earlier decision connected to the same customer segment.', excerpt: 'Forecast: 25 paid activations in year one. Actual: 14. Lesson: written customer commitments predicted uptake better than informal interest.', meta: 'notes/previous-decision.md → prior decision → measured KPI → demand risk on this decision. Synthetic case.' },
+      conflict: { kicker: 'Conflicting claims', title: 'Twelve interested or four verified?', description: 'The graph preserves both claims instead of silently merging them.', excerpt: 'Sales: “Twelve municipalities are interested.” Customer records: four distinct written requests.', meta: 'slack/sales.json ↔ emails/customers.csv → unresolved demand conflict → forecast risk. Needs owner review.' },
+      vendor: { kicker: 'Partner offer', title: 'ConnectorCo proposal', description: 'The vendor and terms are fictional. This is an input to an editable scenario, not a public fact.', excerpt: '“Estimated implementation in six weeks, with partner licensing reflected in the contribution per paying customer.”', meta: 'emails/vendor.csv → six-week estimate + unit economics → partner option. Security and exit terms remain unresolved.' }
+    };
+    const evidence = {
+      known: [
+        { text: 'The official rollout schedule includes public bodies and local government entities.', meta: 'External legal signal · commercial demand is a separate question', source: 'law', label: 'Gov.pl' },
+        { text: 'Four municipal customers explicitly requested an integrated e-Doręczenia workflow.', meta: 'Verified in individual synthetic account emails', source: 'demand', label: '4 emails' },
+        { text: 'An internal build is estimated at 16 weeks with two engineers.', meta: 'Engineering estimate, 8 May 2025', source: 'capacity', label: 'Slack' },
+        { text: 'A prior feature reached 14 activations against a target of 25.', meta: 'Prior synthetic decision and outcome', source: 'history', label: 'Decision' }
+      ],
+      conflicts: [
+        { text: 'Sales reports 12 interested municipalities; only 4 named written requests are in the graph.', meta: 'Different evidence standards. Ask sales to identify the other eight.', source: 'conflict', label: '2 sources' }
+      ],
+      unknowns: [
+        { text: 'How many interested municipalities would actually pay?', meta: 'Commercial unknown · requires customer validation', source: 'demand', label: 'Evidence' },
+        { text: 'Can a partner meet security and exit requirements?', meta: 'Internal review needed · vendor terms are incomplete', source: 'vendor', label: 'Vendor' }
+      ]
+    };
+    const sourceDialog = document.getElementById('source-dialog');
+    const infoDialog = document.getElementById('info-dialog');
+    const decisionDialog = document.getElementById('decision-dialog');
+    let selectedOption = 'partner';
+    let activeTab = 'known';
+    let savedDecision = false;
+    function openSource(key) {
+      const item = sources[key];
+      if (!item) return;
+      document.getElementById('source-dialog-kicker').textContent = item.kicker;
+      document.getElementById('source-dialog-title').textContent = item.title;
+      document.getElementById('source-dialog-description').textContent = item.description;
+      document.getElementById('source-dialog-excerpt').textContent = item.excerpt;
+      document.getElementById('source-dialog-meta').textContent = item.meta;
+      const original = document.getElementById('source-original');
+      original.hidden = !item.href;
+      if (item.href) original.href = item.href;
+      else original.removeAttribute('href');
+      sourceDialog.showModal();
+    }
+    function renderEvidence() {
+      const host = document.getElementById('evidence-content');
+      host.replaceChildren();
+      evidence[activeTab].forEach(function(item) {
+        const row = document.createElement('div'); row.className = 'evidence-row';
+        const bullet = document.createElement('span'); bullet.className = 'evidence-bullet' + (activeTab === 'known' ? '' : ' dim'); bullet.setAttribute('aria-hidden', 'true');
+        const copy = document.createElement('div'); copy.className = 'evidence-copy';
+        const statement = document.createElement('p'); statement.textContent = item.text;
+        const meta = document.createElement('small'); meta.textContent = item.meta;
+        const link = document.createElement('button'); link.className = 'source-link'; link.type = 'button'; link.textContent = item.label + ' ↗'; link.addEventListener('click', function(){ openSource(item.source); });
+        statement.append(link); copy.append(statement, meta); row.append(bullet, copy); host.append(row);
+      });
+      if (activeTab === 'unknowns') {
+        const button = document.createElement('button'); button.className = 'button research-button'; button.type = 'button'; button.textContent = 'Investigate official scope ↗'; button.addEventListener('click', function(){ openSource('law'); }); host.append(button);
+      }
+    }
+    function selectOption(key) {
+      selectedOption = key;
+      document.querySelectorAll('.option').forEach(function(button) { const active = button.dataset.option === key; button.classList.toggle('selected', active); button.setAttribute('aria-pressed', String(active)); });
+      document.querySelectorAll('.graph-node[data-option]').forEach(function(button) { button.style.borderColor = button.dataset.option === key ? 'var(--accent)' : ''; });
+    }
+    function updateEstimate(value) {
+      const count = Math.min(40, Math.max(0, Number(value) || 0));
+      document.getElementById('customers-range').value = count;
+      document.getElementById('customers-number').value = count;
+      const estimated = (count * 14000 - 110000) / 1000;
+      document.getElementById('partner-value').innerHTML = (estimated >= 0 ? '+' : '') + estimated + 'k <small>PLN first year</small>';
+      document.getElementById('partner-detail').textContent = '6 weeks · ' + count + ' paying customers assumed';
+      const insight = document.getElementById('option-insight');
+      insight.textContent = estimated > 140 ? 'Partner leads on current assumptions. Four written requests support demand; the ' + count + '-customer forecast remains unverified.' : 'Build has the higher modelled contribution at these inputs. Check delivery timing and engineering capacity before deciding.';
+    }
+    document.querySelectorAll('[data-source]').forEach(function(button){ button.addEventListener('click', function(){ openSource(button.dataset.source); }); });
+    document.querySelectorAll('[data-option]').forEach(function(button){ button.addEventListener('click', function(){ selectOption(button.dataset.option); }); });
+    document.querySelectorAll('.tab').forEach(function(button){ button.addEventListener('click', function(){ activeTab = button.dataset.tab; document.querySelectorAll('.tab').forEach(function(tab){ const selected = tab === button; tab.classList.toggle('active', selected); tab.setAttribute('aria-selected', String(selected)); }); renderEvidence(); }); });
+    document.getElementById('customers-range').addEventListener('input', function(event){ updateEstimate(event.target.value); });
+    document.getElementById('customers-number').addEventListener('input', function(event){ updateEstimate(event.target.value); });
+    document.getElementById('record-button').addEventListener('click', function(){ document.getElementById('chosen-option').value = { build: 'Build in-house', partner: 'Partner connector', wait: 'Postpone' }[selectedOption]; decisionDialog.showModal(); });
+    document.getElementById('decision-form').addEventListener('submit', function(event){ event.preventDefault(); savedDecision = true; const label = { build: 'Build in-house', partner: 'Partner connector', wait: 'Postpone' }[selectedOption]; document.getElementById('decision-status').textContent = 'Decision recorded · ' + label; document.getElementById('record-button').textContent = 'Edit decision ↗'; decisionDialog.close(); });
+    document.getElementById('graph-help').addEventListener('click', function(){ document.getElementById('info-dialog-title').textContent = 'Graph method'; document.getElementById('info-dialog-body').textContent = 'Raw messages and documents stay as sources. Selected claims, decisions, entities and outcomes become linked records with authors and dates. Conflicting claims remain separate until reviewed. This is a design mock using synthetic company records.'; infoDialog.showModal(); });
+    document.getElementById('method-button').addEventListener('click', function(){ document.getElementById('info-dialog-title').textContent = 'Scenario method'; document.getElementById('info-dialog-body').textContent = 'First-year contribution = paid customers × contribution per customer − fixed first-year cost. Build: 18 × PLN 20,000 − PLN 220,000 = PLN 140,000. Partner: forecast × PLN 14,000 − PLN 110,000. Figures are fictional, editable assumptions; timing, control and vendor risk need human judgment.'; infoDialog.showModal(); });
+    document.querySelectorAll('[data-close]').forEach(function(button){ button.addEventListener('click', function(){ document.getElementById(button.dataset.close).close(); }); });
+    renderEvidence();
+  </script>
+</body>
+</html>

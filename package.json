@@ -2,6 +2,12 @@
   "name": "hackathon-2026",
   "private": true,
   "type": "module",
+  "exports": {
+    "./graph": "./src/graph/index.ts"
+  },
+  "engines": {
+    "node": ">=24.9.0"
+  },
   "imports": {
     "#/*": "./src/*"
   },
@@ -9,7 +15,10 @@
     "dev": "vite dev --port 3000",
     "generate-routes": "tsr generate",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.ts",
+    "demo": "node scripts/demo.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
