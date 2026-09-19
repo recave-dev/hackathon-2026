@@ -82,6 +82,23 @@ export const NebulaOrb = ({
     '--nebula-live-from': isError ? ERROR_COLOR_FROM : colorFrom,
     '--nebula-live-to': isError ? ERROR_COLOR_TO : colorTo,
   } as CSSProperties;
+  // Static gradient core: the no-WebGL fallback, and also what shows while the
+  // lazy scene chunk is still downloading, so the orb never renders as glow only.
+  const cssCore = (
+    <div
+      aria-hidden
+      style={{
+        position: 'absolute',
+        inset: '10%',
+        borderRadius: '50%',
+        background:
+          'radial-gradient(circle at 36% 30%, color-mix(in srgb, var(--nebula-live-to) 78%, white) 0%, var(--nebula-live-to) 32%, var(--nebula-live-from) 66%, color-mix(in srgb, var(--nebula-live-from) 55%, black) 100%)',
+        opacity: 0.55 + glow * 0.45,
+        transform: `scale(${CORE_SCALE[state]})`,
+        transition: reduced ? undefined : 'opacity 600ms ease, transform 600ms ease',
+      }}
+    />
+  );
   return (
     <div
       ref={ref}
@@ -126,24 +143,10 @@ export const NebulaOrb = ({
           transition: fade,
         }}
       />
-      {webgl !== true && (
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            inset: '10%',
-            borderRadius: '50%',
-            background:
-              'radial-gradient(circle at 36% 30%, color-mix(in srgb, var(--nebula-live-to) 78%, white) 0%, var(--nebula-live-to) 32%, var(--nebula-live-from) 66%, color-mix(in srgb, var(--nebula-live-from) 55%, black) 100%)',
-            opacity: 0.55 + glow * 0.45,
-            transform: `scale(${CORE_SCALE[state]})`,
-            transition: reduced ? undefined : 'opacity 600ms ease, transform 600ms ease',
-          }}
-        />
-      )}
+      {webgl !== true && cssCore}
       {webgl === true && (
         <div style={{ position: 'absolute', inset: 0 }}>
-          <Suspense fallback={null}>
+          <Suspense fallback={cssCore}>
             <NebulaScene
               state={state}
               speed={speed}

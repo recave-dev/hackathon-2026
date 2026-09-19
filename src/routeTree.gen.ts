@@ -12,6 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppDecisionsRouteImport } from './routes/app/decisions'
+import { Route as AppRecentRouteImport } from './routes/app/recent'
+import { Route as AppSessionRouteImport } from './routes/app/session'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,28 +31,60 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppDecisionsRoute = AppDecisionsRouteImport.update({
+  id: '/decisions',
+  path: '/decisions',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppRecentRoute = AppRecentRouteImport.update({
+  id: '/recent',
+  path: '/recent',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSessionRoute = AppSessionRouteImport.update({
+  id: '/session',
+  path: '/session',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
+  '/app/decisions': typeof AppDecisionsRoute
+  '/app/recent': typeof AppRecentRoute
+  '/app/session': typeof AppSessionRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app/decisions': typeof AppDecisionsRoute
+  '/app/recent': typeof AppRecentRoute
+  '/app/session': typeof AppSessionRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
+  '/app/decisions': typeof AppDecisionsRoute
+  '/app/recent': typeof AppRecentRoute
+  '/app/session': typeof AppSessionRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/app/'
+  fullPaths:
+    '/' | '/app' | '/app/decisions' | '/app/recent' | '/app/session' | '/app/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app'
-  id: '__root__' | '/' | '/app' | '/app/'
+  to: '/' | '/app/decisions' | '/app/recent' | '/app/session' | '/app'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/app/decisions'
+    | '/app/recent'
+    | '/app/session'
+    | '/app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -80,14 +115,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/decisions': {
+      id: '/app/decisions'
+      path: '/decisions'
+      fullPath: '/app/decisions'
+      preLoaderRoute: typeof AppDecisionsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/recent': {
+      id: '/app/recent'
+      path: '/recent'
+      fullPath: '/app/recent'
+      preLoaderRoute: typeof AppRecentRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/session': {
+      id: '/app/session'
+      path: '/session'
+      fullPath: '/app/session'
+      preLoaderRoute: typeof AppSessionRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
   }
 }
 
 interface AppRouteRouteChildren {
+  AppDecisionsRoute: typeof AppDecisionsRoute
+  AppRecentRoute: typeof AppRecentRoute
+  AppSessionRoute: typeof AppSessionRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppDecisionsRoute: AppDecisionsRoute,
+  AppRecentRoute: AppRecentRoute,
+  AppSessionRoute: AppSessionRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

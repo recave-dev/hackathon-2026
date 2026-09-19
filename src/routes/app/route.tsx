@@ -1,5 +1,7 @@
 import { Outlet, createFileRoute } from '@tanstack/react-router'
 
+import { TabBar } from '@/components/app/tab-bar'
+
 export const Route = createFileRoute('/app')({
   head: () => ({
     meta: [
@@ -20,9 +22,11 @@ function AppLayout() {
       className="dark min-h-svh bg-background text-foreground"
       style={{ colorScheme: 'dark' }}
     >
-      <main className="relative mx-auto flex min-h-svh w-full max-w-md flex-col">
+      {/* Bottom padding reserves room for the fixed tab bar and its raised orb. */}
+      <main className="relative mx-auto flex min-h-svh w-full max-w-md flex-col pb-[calc(6rem+env(safe-area-inset-bottom))]">
         <Outlet />
       </main>
+      <TabBar />
     </div>
   )
 }
