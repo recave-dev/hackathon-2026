@@ -1,0 +1,209 @@
+export type Id = string
+
+export interface Person {
+  id: Id
+  name: string
+  role: string
+  company?: string
+}
+
+export interface Project {
+  id: Id
+  name: string
+  client?: string
+}
+
+export type SourceKind = 'email' | 'document' | 'transcript' | 'slack' | 'kpi' | 'meeting'
+
+export interface Source {
+  id: Id
+  kind: SourceKind
+  title: string
+  excerpt: string
+  date: string
+  author?: string
+  /** Set for transcript sources: which saved note and segment the excerpt comes from. */
+  noteId?: Id
+  segmentId?: Id
+}
+
+export type DecisionStatus = 'pending' | 'snoozed' | 'decided' | 'delegated' | 'completed'
+
+export interface Consequences {
+  time?: string
+  cost?: string
+  risk?: string
+}
+
+export interface DecisionOption {
+  id: Id
+  label: string
+  description: string
+  consequences: Consequences
+  /** Marks options whose outcome depends on someone outside the company. */
+  requiresConsent?: string
+  /** Steps the agent will simulate right after approval. */
+  execution: Omit<ExecutionStep, 'id'>[]
+}
+
+export type ExecutionStatus = 'done' | 'waiting'
+
+export interface ExecutionStep {
+  id: Id
+  label: string
+  status: ExecutionStatus
+}
+
+export interface Question {
+  id: Id
+  text: string
+  toId: Id
+  askedAt: string
+  answer?: string
+  answeredAt?: string
+}
+
+export interface Outcome {
+  metric: string
+  forecast: string
+  actual: string
+  measuredAt: string
+  lesson: string
+}
+
+export interface Decision {
+  id: Id
+  title: string
+  projectId: Id
+  why: string
+  dueAt: string
+  status: DecisionStatus
+  createdAt: string
+  context: string[]
+  facts: string[]
+  unknowns: string[]
+  assumptions: string[]
+  options: DecisionOption[]
+  sourceIds: Id[]
+  agentPlan: string
+  questions: Question[]
+  execution: ExecutionStep[]
+  snoozedUntil?: string
+  delegatedToId?: Id
+  chosenOptionId?: Id
+  customInstruction?: string
+  decidedAt?: string
+  rationale?: string
+  outcome?: Outcome
+  originNoteId?: Id
+}
+
+export interface Task {
+  id: Id
+  title: string
+  ownerId: Id
+  dueAt: string
+  status: 'open' | 'done'
+  projectId?: Id
+  noteId?: Id
+}
+
+export type EntityLink =
+  | { type: 'decision'; id: Id }
+  | { type: 'decisions'; filter?: 'pending' | 'snoozed' | 'history' }
+  | { type: 'meeting'; id: Id }
+  | { type: 'note'; id: Id }
+  | { type: 'session' }
+
+export interface Activity {
+  id: Id
+  at: string
+  text: string
+  actor: 'agent' | 'user' | 'system'
+  link?: EntityLink
+}
+
+export interface Change {
+  id: Id
+  text: string
+  detail: string
+  at: string
+  link?: EntityLink
+}
+
+export interface Meeting {
+  id: Id
+  title: string
+  at: string
+  projectId: Id
+  participantIds: Id[]
+  goal: string
+  priorAgreements: string[]
+  openIssues: string[]
+  sourceIds: Id[]
+}
+
+export interface TranscriptSegment {
+  id: Id
+  /** Seconds from the start of the recording. */
+  at: number
+  text: string
+}
+
+export type ExtractedKind = 'agreement' | 'proposal' | 'task' | 'decision' | 'missing'
+
+export interface ExtractedItem {
+  id: Id
+  kind: ExtractedKind
+  text: string
+  segmentId: Id
+  included: boolean
+  /** Hint shown next to the item, e.g. that a client still has to confirm. */
+  note?: string
+}
+
+export type SessionMode = 'note' | 'meeting'
+export type SessionPhase = 'idle' | 'recording' | 'paused' | 'processing' | 'review' | 'saved'
+
+export interface SessionState {
+  id: Id
+  mode: SessionMode
+  phase: SessionPhase
+  elapsedSec: number
+  /** How many transcript segments have been revealed so far. */
+  revealed: number
+  summary: string
+  items: ExtractedItem[]
+  savedNoteId?: Id
+}
+
+export interface Note {
+  id: Id
+  sessionId: Id
+  mode: SessionMode
+  visibility: 'private' | 'shared'
+  createdAt: string
+  durationSec: number
+  projectId?: Id
+  summary: string
+  segments: TranscriptSegment[]
+  items: ExtractedItem[]
+  decisionIds: Id[]
+  taskIds: Id[]
+}
+
+export interface DemoState {
+  version: number
+  now: string
+  userId: Id
+  people: Person[]
+  projects: Project[]
+  sources: Source[]
+  decisions: Decision[]
+  tasks: Task[]
+  activities: Activity[]
+  changes: Change[]
+  meetings: Meeting[]
+  notes: Note[]
+  session: SessionState
+}

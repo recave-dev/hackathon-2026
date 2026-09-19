@@ -167,11 +167,13 @@ void main(){
   float pulse = 0.5 + 0.5 * sin(uTime * 3.0);
   vec3 rimColor = mix(uColorTo, vec3(1.0), 0.3);
 
-  vec3 col = base * (0.32 + diffuse * 1.15);
+  // Lifted ambient and gentler tone-mapping than the original so light,
+  // pastel palettes stay light on a bright background.
+  vec3 col = base * (0.5 + diffuse * 1.05);
   col += vec3(0.42, 0.48, 0.7) * fill * 0.22;
   col += vec3(specular);
   col += rimColor * fres * (0.42 + uAudio * 0.38 + uRim * pulse * 0.55);
-  col = col / (1.0 + col * 0.6);
+  col = col / (1.0 + col * 0.25);
 
   float grain = hash(gl_FragCoord.xy + uShimmerPhase * 43.7);
   col *= 1.0 + (grain - 0.5) * 0.08;
@@ -245,6 +247,13 @@ const getReducedMotion = (): boolean => window.matchMedia('(prefers-reduced-moti
 
 const getServerReducedMotion = (): boolean => false;
 
+// three's colour management converts hex → linear on set(), but this raw
+// ShaderMaterial writes gl_FragColor without an sRGB output step, so the orb
+// rendered visibly darker than its props. Undo the conversion so the shader
+// receives the authored sRGB values.
+const authored = (target: THREE.Color, hex: string): THREE.Color =>
+  target.set(hex).convertLinearToSRGB()
+
 interface SphereProps {
   state: OrbState;
   speed: number;
@@ -263,10 +272,10 @@ const Sphere = ({ state, speed, colorFrom, colorTo, reduced, levelRef }: SphereP
   const shimmer = useRef(0);
   const mixRef = useRef<StateMix | null>(null);
   const palette = useRef({
-    from: new THREE.Color(colorFrom),
-    to: new THREE.Color(colorTo),
-    errorFrom: new THREE.Color(ERROR_COLOR_FROM),
-    errorTo: new THREE.Color(ERROR_COLOR_TO),
+    from: authored(new THREE.Color(), colorFrom),
+    to: authored(new THREE.Color(), colorTo),
+    errorFrom: authored(new THREE.Color(), ERROR_COLOR_FROM),
+    errorTo: authored(new THREE.Color(), ERROR_COLOR_TO),
   });
 
   const uniforms = useMemo(
@@ -287,8 +296,8 @@ const Sphere = ({ state, speed, colorFrom, colorTo, reduced, levelRef }: SphereP
   );
 
   useEffect(() => {
-    palette.current.from.set(colorFrom);
-    palette.current.to.set(colorTo);
+    authored(palette.current.from, colorFrom);
+    authored(palette.current.to, colorTo);
     invalidate();
   }, [colorFrom, colorTo, invalidate]);
 
@@ -385,6 +394,9 @@ export const NebulaScene = ({ state, speed, colorFrom, colorTo, levelRef }: Nebu
       camera={{ position: [0, 0, 3.6], fov: 45 }}
       gl={{ antialias: true, alpha: true }}
       dpr={[1, 2]}
+      // The orb is decorative; r3f would otherwise force pointer-events: auto on
+      // its container and swallow taps meant for elements beneath the glow.
+      style={{ pointerEvents: 'none' }}
     >
       <Sphere
         state={state}

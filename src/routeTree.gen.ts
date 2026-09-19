@@ -12,9 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as AppIndexRouteImport } from './routes/app/index'
-import { Route as AppDecisionsRouteImport } from './routes/app/decisions'
-import { Route as AppRecentRouteImport } from './routes/app/recent'
+import { Route as AppHomeRouteImport } from './routes/app/home'
 import { Route as AppSessionRouteImport } from './routes/app/session'
+import { Route as AppDecisionsIndexRouteImport } from './routes/app/decisions.index'
+import { Route as AppDecisionsDecisionIdRouteImport } from './routes/app/decisions.$decisionId'
+import { Route as AppMeetingsMeetingIdRouteImport } from './routes/app/meetings.$meetingId'
+import { Route as AppNotesNoteIdRouteImport } from './routes/app/notes.$noteId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,14 +34,9 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppDecisionsRoute = AppDecisionsRouteImport.update({
-  id: '/decisions',
-  path: '/decisions',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const AppRecentRoute = AppRecentRouteImport.update({
-  id: '/recent',
-  path: '/recent',
+const AppHomeRoute = AppHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppSessionRoute = AppSessionRouteImport.update({
@@ -46,45 +44,93 @@ const AppSessionRoute = AppSessionRouteImport.update({
   path: '/session',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppDecisionsIndexRoute = AppDecisionsIndexRouteImport.update({
+  id: '/decisions/',
+  path: '/decisions/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppDecisionsDecisionIdRoute = AppDecisionsDecisionIdRouteImport.update({
+  id: '/decisions/$decisionId',
+  path: '/decisions/$decisionId',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppMeetingsMeetingIdRoute = AppMeetingsMeetingIdRouteImport.update({
+  id: '/meetings/$meetingId',
+  path: '/meetings/$meetingId',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
+  id: '/notes/$noteId',
+  path: '/notes/$noteId',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
-  '/app/decisions': typeof AppDecisionsRoute
-  '/app/recent': typeof AppRecentRoute
+  '/app/home': typeof AppHomeRoute
   '/app/session': typeof AppSessionRoute
   '/app/': typeof AppIndexRoute
+  '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
+  '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
+  '/app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/app/decisions/': typeof AppDecisionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/app/decisions': typeof AppDecisionsRoute
-  '/app/recent': typeof AppRecentRoute
+  '/app/home': typeof AppHomeRoute
   '/app/session': typeof AppSessionRoute
   '/app': typeof AppIndexRoute
+  '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
+  '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
+  '/app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/app/decisions': typeof AppDecisionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
-  '/app/decisions': typeof AppDecisionsRoute
-  '/app/recent': typeof AppRecentRoute
+  '/app/home': typeof AppHomeRoute
   '/app/session': typeof AppSessionRoute
   '/app/': typeof AppIndexRoute
+  '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
+  '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
+  '/app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/app/decisions/': typeof AppDecisionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/app' | '/app/decisions' | '/app/recent' | '/app/session' | '/app/'
+    | '/'
+    | '/app'
+    | '/app/home'
+    | '/app/session'
+    | '/app/'
+    | '/app/decisions/$decisionId'
+    | '/app/meetings/$meetingId'
+    | '/app/notes/$noteId'
+    | '/app/decisions/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app/decisions' | '/app/recent' | '/app/session' | '/app'
+  to:
+    | '/'
+    | '/app/home'
+    | '/app/session'
+    | '/app'
+    | '/app/decisions/$decisionId'
+    | '/app/meetings/$meetingId'
+    | '/app/notes/$noteId'
+    | '/app/decisions'
   id:
     | '__root__'
     | '/'
     | '/app'
-    | '/app/decisions'
-    | '/app/recent'
+    | '/app/home'
     | '/app/session'
     | '/app/'
+    | '/app/decisions/$decisionId'
+    | '/app/meetings/$meetingId'
+    | '/app/notes/$noteId'
+    | '/app/decisions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -115,18 +161,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/decisions': {
-      id: '/app/decisions'
-      path: '/decisions'
-      fullPath: '/app/decisions'
-      preLoaderRoute: typeof AppDecisionsRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/app/recent': {
-      id: '/app/recent'
-      path: '/recent'
-      fullPath: '/app/recent'
-      preLoaderRoute: typeof AppRecentRouteImport
+    '/app/home': {
+      id: '/app/home'
+      path: '/home'
+      fullPath: '/app/home'
+      preLoaderRoute: typeof AppHomeRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/session': {
@@ -136,21 +175,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSessionRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/decisions/': {
+      id: '/app/decisions/'
+      path: '/decisions'
+      fullPath: '/app/decisions/'
+      preLoaderRoute: typeof AppDecisionsIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/decisions/$decisionId': {
+      id: '/app/decisions/$decisionId'
+      path: '/decisions/$decisionId'
+      fullPath: '/app/decisions/$decisionId'
+      preLoaderRoute: typeof AppDecisionsDecisionIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/meetings/$meetingId': {
+      id: '/app/meetings/$meetingId'
+      path: '/meetings/$meetingId'
+      fullPath: '/app/meetings/$meetingId'
+      preLoaderRoute: typeof AppMeetingsMeetingIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/notes/$noteId': {
+      id: '/app/notes/$noteId'
+      path: '/notes/$noteId'
+      fullPath: '/app/notes/$noteId'
+      preLoaderRoute: typeof AppNotesNoteIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
   }
 }
 
 interface AppRouteRouteChildren {
-  AppDecisionsRoute: typeof AppDecisionsRoute
-  AppRecentRoute: typeof AppRecentRoute
+  AppHomeRoute: typeof AppHomeRoute
   AppSessionRoute: typeof AppSessionRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppDecisionsDecisionIdRoute: typeof AppDecisionsDecisionIdRoute
+  AppMeetingsMeetingIdRoute: typeof AppMeetingsMeetingIdRoute
+  AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
+  AppDecisionsIndexRoute: typeof AppDecisionsIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
-  AppDecisionsRoute: AppDecisionsRoute,
-  AppRecentRoute: AppRecentRoute,
+  AppHomeRoute: AppHomeRoute,
   AppSessionRoute: AppSessionRoute,
   AppIndexRoute: AppIndexRoute,
+  AppDecisionsDecisionIdRoute: AppDecisionsDecisionIdRoute,
+  AppMeetingsMeetingIdRoute: AppMeetingsMeetingIdRoute,
+  AppNotesNoteIdRoute: AppNotesNoteIdRoute,
+  AppDecisionsIndexRoute: AppDecisionsIndexRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(

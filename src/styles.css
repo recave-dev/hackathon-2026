@@ -117,6 +117,29 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Warm, light palette scoped to the mobile app under /app. One muted accent. */
+.app-theme {
+    --background: oklch(0.982 0.007 80);
+    --foreground: oklch(0.23 0.015 60);
+    --card: oklch(0.995 0.003 80);
+    --card-foreground: oklch(0.23 0.015 60);
+    --popover: oklch(0.995 0.003 80);
+    --popover-foreground: oklch(0.23 0.015 60);
+    --primary: oklch(0.47 0.085 235);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.95 0.01 80);
+    --secondary-foreground: oklch(0.3 0.015 60);
+    --muted: oklch(0.955 0.009 80);
+    --muted-foreground: oklch(0.5 0.018 65);
+    --accent: oklch(0.94 0.02 235);
+    --accent-foreground: oklch(0.3 0.05 235);
+    --destructive: oklch(0.55 0.17 27);
+    --border: oklch(0.905 0.012 80);
+    --input: oklch(0.88 0.012 80);
+    --ring: oklch(0.6 0.08 235);
+    color-scheme: light;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
