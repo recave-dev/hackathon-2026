@@ -13,7 +13,7 @@ function MeetingBriefing() {
   const { meetingId } = Route.useParams()
   const state = useDemoState()
   const meeting = state.meetings.find((m) => m.id === meetingId)
-  if (!meeting) return <Screen title="Nie znaleziono spotkania" back={{ to: '/app/home', label: 'Home' }} />
+  if (!meeting) return <Screen title="Nie znaleziono spotkania" back={{ to: '/app', label: 'Start' }} />
 
   const relatedDecisions = state.decisions.filter(
     (d) => d.projectId === meeting.projectId && (d.status === 'pending' || d.status === 'snoozed'),
@@ -21,7 +21,7 @@ function MeetingBriefing() {
 
   return (
     <Screen
-      back={{ to: '/app/home', label: 'Home' }}
+      back={{ to: '/app', label: 'Start' }}
       eyebrow={`Briefing · ${formatLongDate(meeting.at)}, ${formatTime(meeting.at)}`}
       title={meeting.title}
       description={projectLabel(state, meeting.projectId)}
@@ -73,7 +73,7 @@ function MeetingBriefing() {
         <SourceList sourceIds={meeting.sourceIds} />
       </Section>
 
-      <Button variant="outline" className="mb-4" render={<Link to="/app/session" />}>
+      <Button variant="outline" className="mb-4" render={<Link to="/app" />}>
         Nagraj notatkę po spotkaniu
       </Button>
     </Screen>

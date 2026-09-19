@@ -38,7 +38,7 @@ export function EntityLink({ link, className, children }: Props) {
       )
     case 'session':
       return (
-        <Link to="/app/session" className={className}>
+        <Link to="/app" className={className}>
           {children}
         </Link>
       )

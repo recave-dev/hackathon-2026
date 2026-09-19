@@ -103,7 +103,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
                 </span>
               </div>
               <Link
-                to="/app/home"
+                to="/app"
                 className="inline-flex w-fit items-center gap-1.5 rounded-md text-xs text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <SmartphoneIcon className="size-3.5" /> Widok mobilny

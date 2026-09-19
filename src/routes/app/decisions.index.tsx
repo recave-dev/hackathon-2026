@@ -34,6 +34,7 @@ function Decisions() {
 
   return (
     <Screen
+      back={{ to: '/app', label: 'Start' }}
       title="Decisions"
       description={
         filter === 'pending'

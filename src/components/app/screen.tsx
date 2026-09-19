@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
-type BackTarget = '/app/home' | '/app/decisions' | '/app/session'
+type BackTarget = '/app' | '/app/decisions'
 
 export function Screen({
   title,

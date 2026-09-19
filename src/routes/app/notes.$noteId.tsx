@@ -25,12 +25,12 @@ function NoteView() {
   const hydrated = useHydrated()
   const note = state.notes.find((n) => n.id === noteId)
   // Notes live only in persisted client state; wait for it before declaring "not found".
-  if (!note) return hydrated ? <Screen title="Nie znaleziono notatki" back={{ to: '/app/home', label: 'Home' }} /> : null
+  if (!note) return hydrated ? <Screen title="Nie znaleziono notatki" back={{ to: '/app', label: 'Start' }} /> : null
   const included = note.items.filter((i) => i.included)
 
   return (
     <Screen
-      back={{ to: '/app/home', label: 'Home' }}
+      back={{ to: '/app', label: 'Start' }}
       eyebrow={`${note.mode === 'note' ? 'Notatka głosowa' : 'Nagranie spotkania'} · ${formatDateTime(note.createdAt)}`}
       title={note.projectId ? projectLabel(state, note.projectId) : 'Notatka'}
       description={

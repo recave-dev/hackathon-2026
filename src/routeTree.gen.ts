@@ -15,8 +15,6 @@ import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as WorkspaceContextRouteImport } from './routes/_workspace/context'
 import { Route as WorkspaceDecisionsRouteImport } from './routes/_workspace/decisions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
-import { Route as AppHomeRouteImport } from './routes/app/home'
-import { Route as AppSessionRouteImport } from './routes/app/session'
 import { Route as WorkspaceContextIndexRouteImport } from './routes/_workspace/context.index'
 import { Route as WorkspaceContextTopicIdRouteImport } from './routes/_workspace/context.$topicId'
 import { Route as WorkspaceDecisionsIndexRouteImport } from './routes/_workspace/decisions.index'
@@ -53,16 +51,6 @@ const WorkspaceDecisionsRoute = WorkspaceDecisionsRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const AppHomeRoute = AppHomeRouteImport.update({
-  id: '/home',
-  path: '/home',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const AppSessionRoute = AppSessionRouteImport.update({
-  id: '/session',
-  path: '/session',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const WorkspaceContextIndexRoute = WorkspaceContextIndexRouteImport.update({
@@ -112,8 +100,6 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteRouteWithChildren
   '/context': typeof WorkspaceContextRouteWithChildren
   '/decisions': typeof WorkspaceDecisionsRouteWithChildren
-  '/app/home': typeof AppHomeRoute
-  '/app/session': typeof AppSessionRoute
   '/app/': typeof AppIndexRoute
   '/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
@@ -126,8 +112,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/app/home': typeof AppHomeRoute
-  '/app/session': typeof AppSessionRoute
   '/app': typeof AppIndexRoute
   '/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
@@ -145,8 +129,6 @@ export interface FileRoutesById {
   '/_workspace': typeof WorkspaceRouteWithChildren
   '/_workspace/context': typeof WorkspaceContextRouteWithChildren
   '/_workspace/decisions': typeof WorkspaceDecisionsRouteWithChildren
-  '/app/home': typeof AppHomeRoute
-  '/app/session': typeof AppSessionRoute
   '/app/': typeof AppIndexRoute
   '/_workspace/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/_workspace/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
@@ -164,8 +146,6 @@ export interface FileRouteTypes {
     | '/app'
     | '/context'
     | '/decisions'
-    | '/app/home'
-    | '/app/session'
     | '/app/'
     | '/context/$topicId'
     | '/decisions/$decisionId'
@@ -178,8 +158,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/app/home'
-    | '/app/session'
     | '/app'
     | '/context/$topicId'
     | '/decisions/$decisionId'
@@ -196,8 +174,6 @@ export interface FileRouteTypes {
     | '/_workspace'
     | '/_workspace/context'
     | '/_workspace/decisions'
-    | '/app/home'
-    | '/app/session'
     | '/app/'
     | '/_workspace/context/$topicId'
     | '/_workspace/decisions/$decisionId'
@@ -257,20 +233,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/app/home': {
-      id: '/app/home'
-      path: '/home'
-      fullPath: '/app/home'
-      preLoaderRoute: typeof AppHomeRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/app/session': {
-      id: '/app/session'
-      path: '/session'
-      fullPath: '/app/session'
-      preLoaderRoute: typeof AppSessionRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_workspace/context/': {
@@ -333,8 +295,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteRouteChildren {
-  AppHomeRoute: typeof AppHomeRoute
-  AppSessionRoute: typeof AppSessionRoute
   AppIndexRoute: typeof AppIndexRoute
   AppDecisionsDecisionIdRoute: typeof AppDecisionsDecisionIdRoute
   AppMeetingsMeetingIdRoute: typeof AppMeetingsMeetingIdRoute
@@ -343,8 +303,6 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
-  AppHomeRoute: AppHomeRoute,
-  AppSessionRoute: AppSessionRoute,
   AppIndexRoute: AppIndexRoute,
   AppDecisionsDecisionIdRoute: AppDecisionsDecisionIdRoute,
   AppMeetingsMeetingIdRoute: AppMeetingsMeetingIdRoute,
