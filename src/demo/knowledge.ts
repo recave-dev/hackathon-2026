@@ -330,23 +330,47 @@ export interface ScenarioLine {
   speakerId: Id
   text: string
   /** What the assistant should do for this line; used by the demo self-check. */
-  expect: { card: string; facet?: Facet } | null
+  expect: { card?: string; person?: string; facet?: Facet } | null
 }
+
+/** `ambient`: every utterance is judged. `wake`: only lines addressed to Bolek are. */
+export type ListeningMode = 'ambient' | 'wake'
 
 export interface Scenario {
   id: string
   title: string
   goal: string
   participantIds: Id[]
+  mode: ListeningMode
   lines: ScenarioLine[]
 }
 
 export const SCENARIOS: Scenario[] = [
   {
+    id: 'bolek-people',
+    title: 'Bolek — kto jest kim',
+    goal: 'Asystent odzywa się tylko na imię. Ludzie z kart, reszta z grafu firmy.',
+    participantIds: ['p-tomasz', 'p-michal', 'p-kasia', 'p-anna'],
+    mode: 'wake',
+    lines: [
+      { id: 'z1', speakerId: 'p-tomasz', text: 'Zanim przejdziemy do agendy: w piątek mamy warsztat z zespołem Platformy, będzie tam kilka nowych osób.', expect: null },
+      { id: 'z2', speakerId: 'p-kasia', text: 'Ja tam idę, ale szczerze nie kojarzę połowy nazwisk z zaproszenia.', expect: null },
+      { id: 'z3', speakerId: 'p-michal', text: 'Bolek, powiedz mi, kim jest Darek Wylon?', expect: { person: 'darek-wylon' } },
+      { id: 'z4', speakerId: 'p-kasia', text: 'Aha, czyli to on prowadzi rekrutację seniora. Dobrze wiedzieć.', expect: null },
+      { id: 'z5', speakerId: 'p-anna', text: 'Bolek.', expect: null },
+      { id: 'z6', speakerId: 'p-anna', text: 'Nad czym teraz pracuje Patrycja?', expect: { person: 'patrycja-sowa' } },
+      { id: 'z7', speakerId: 'p-tomasz', text: 'Dobra, to ona pilnuje potwierdzenia od Alfy. Wracamy do agendy, Michał, koszty.', expect: null },
+      { id: 'z8', speakerId: 'p-michal', text: 'Zero zmian poza jedną pozycją. Bolek, ile płacimy za Pipedrive?', expect: { card: 'pipedrive', facet: 'cost' } },
+      { id: 'z9', speakerId: 'p-tomasz', text: 'A za co dokładnie odpowiada Piotr, Bolek?', expect: { person: 'piotr-zielinski' } },
+      { id: 'z10', speakerId: 'p-tomasz', text: 'OK, dzięki. Kończymy.', expect: null },
+    ],
+  },
+  {
     id: 'board-weekly',
     title: 'Zarząd — przegląd tygodnia',
     goal: 'Koszty narzędzi, status Alfy i umowa z podwykonawcą QA.',
     participantIds: ['p-tomasz', 'p-michal', 'p-kasia', 'p-piotr', 'p-anna'],
+    mode: 'ambient',
     lines: [
       { id: 'l1', speakerId: 'p-tomasz', text: 'Dobra, zaczynamy. Mamy trzy tematy: koszty, Alfa i Beta Testing. Michał, zacznij od kosztów.', expect: null },
       { id: 'l2', speakerId: 'p-michal', text: 'Przejrzałem subskrypcje. Większość jest bez zmian, ale jedna pozycja rośnie.', expect: null },
@@ -367,6 +391,7 @@ export const SCENARIOS: Scenario[] = [
     title: 'Zarząd — ludzie i pilot',
     goal: 'Oferta dla kandydata, wynik pilota e-Doręczenia i hosting stagingów.',
     participantIds: ['p-tomasz', 'p-piotr', 'p-michal', 'p-anna'],
+    mode: 'ambient',
     lines: [
       { id: 'm1', speakerId: 'p-piotr', text: 'Zanim zaczniemy: kandydat na seniora czeka na odpowiedź do szesnastej. Ile on chciał?', expect: { card: 'senior-backend', facet: 'cost' } },
       { id: 'm2', speakerId: 'p-michal', text: 'W budżecie mamy mniej. Jakie mamy opcje, jeśli nie damy 26 tysięcy?', expect: { card: 'senior-backend', facet: 'options' } },

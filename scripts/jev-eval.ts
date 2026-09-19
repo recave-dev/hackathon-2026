@@ -1,5 +1,6 @@
 import { SCENARIOS } from '../src/demo/knowledge.ts'
 import { detectRelevance } from '../src/server/relevance.ts'
+import { replayScenario } from './replay.ts'
 
 /**
  * Replays every scripted meeting line through the live Jev router and prints
@@ -8,33 +9,32 @@ import { detectRelevance } from '../src/server/relevance.ts'
  *   node --env-file=.env scripts/jev-eval.ts
  */
 
-const meetingFor = (title: string, goal: string) => ({ title, goal, participants: [] as string[] })
-
 let pass = 0
 let total = 0
 const latencies: number[] = []
 
 for (const scenario of SCENARIOS) {
-  console.log(`\n== ${scenario.title}`)
-  const recent: { speaker: string; text: string }[] = []
-  for (const line of scenario.lines) {
-    recent.push({ speaker: line.speakerId, text: line.text })
-    const r = await detectRelevance({ meeting: meetingFor(scenario.title, scenario.goal), recent: recent.slice(-6) })
-    const shown = r.action === 'show' ? r.topic.id : null
-    const expected = line.expect?.card ?? null
-    const ok = shown === expected
-    const facetOk = !line.expect?.facet || line.expect.facet === r.facet.id
+  console.log(`\n== ${scenario.title} (${scenario.mode})`)
+  const steps = await replayScenario(scenario, detectRelevance)
+  for (const { line, result: r, shown, expected } of steps) {
     total++
+    const ok = shown === expected
     if (ok) pass++
-    latencies.push(r.latencyMs)
+    const facetOk = !line.expect?.facet || !r || line.expect.facet === r.facet.id
     const flag = ok ? (facetOk ? ' ok ' : ' ~f ') : ' XX '
-    console.log(
-      `${flag} ${r.engine}${r.via ? `/${r.via}` : ''} ${String(r.latencyMs).padStart(4)}ms  info=${r.needsInfo.toFixed(2)} topic=${(r.topic.id ?? 'none').padEnd(14)} conf=${r.topic.confidence.toFixed(2)} facet=${r.facet.id.padEnd(8)} → ${r.action.padEnd(7)} | want ${expected ?? 'none'}${line.expect?.facet ? `/${line.expect.facet}` : ''}${r.error ? `  ERR ${r.error}` : ''}`,
-    )
+    const want = `${expected ?? 'none'}${line.expect?.facet ? `/${line.expect.facet}` : ''}`
+    if (!r) {
+      console.log(`${flag} skipped (not addressed)${' '.repeat(62)} | want ${want}`)
+    } else {
+      latencies.push(r.latencyMs)
+      console.log(
+        `${flag} ${r.engine}${r.via ? `/${r.via}` : ''} ${r.mode.padEnd(7)} ${String(r.latencyMs).padStart(4)}ms info=${r.needsInfo.toFixed(2)} topic=${(r.topic.id ?? 'none').padEnd(14)} ${r.topic.confidence.toFixed(2)} person=${(r.person.id ?? 'none').padEnd(15)} ${r.person.confidence.toFixed(2)} ${r.facet.id.padEnd(8)} → ${r.action.padEnd(7)} | want ${want}${r.error ? `  ERR ${r.error}` : ''}`,
+      )
+    }
     console.log(`      "${line.text}"`)
   }
 }
 
 latencies.sort((a, b) => a - b)
 const p50 = latencies[Math.floor(latencies.length / 2)] ?? 0
-console.log(`\ncards ${pass}/${total} correct · latency p50 ${p50} ms, max ${latencies.at(-1) ?? 0} ms`)
+console.log(`\n${pass}/${total} correct · latency p50 ${p50} ms, max ${latencies.at(-1) ?? 0} ms`)
