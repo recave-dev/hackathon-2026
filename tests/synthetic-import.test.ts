@@ -27,7 +27,7 @@ test('November snapshot connects the measured outcome and repeat import is idemp
   const graph = new KnowledgeGraph();
   try {
     const first = await importSyntheticCorpus(graph, '2025-11-19');
-    assert.equal(first.documents, 31);
+    assert.equal(first.documents, 66);
     const context = graph.buildDecisionContext(question);
     assert(context.evidence.some((item) => item.chunk.path.includes('2025-11-12-outcome-review.md')));
     assert(context.nodes.some((node) => node.kind === 'observation' && node.attributes.value === '6'));

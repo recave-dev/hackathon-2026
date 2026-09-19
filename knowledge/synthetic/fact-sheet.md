@@ -4,7 +4,7 @@
 
 - Aster Systems is a fictional Polish B2B software vendor with 100 employees and 60 municipal customers as of May 2025.
 - CivicFlow is its municipal document-workflow product. CivicFlow 4.2 is a separate scheduled release.
-- Marta Zielińska is CEO; Tomasz Nowak is Sales Lead; Lena Wójcik is Product Lead; Piotr Kaczmarek is Engineering Lead; Ewa Mazur is Customer Success Lead; Aneta Król is Security Lead; Karol Bąk is Finance Lead.
+- Marta Zielińska is CEO; Tomasz Nowak is Sales Lead; Lena Wójcik is Product Lead; Piotr Kaczmarek is Engineering Lead; Ewa Mazur is Customer Success Lead; Aneta Król is Security Lead; Karol Bąk is Finance Lead and approves or rejects tooling purchases in `#purchase-requests`.
 - ConnectorCo is a fictional prospective integration vendor.
 - Four fictional municipal customers sent explicit pre-decision requests: Gmina Brzozowa, Miasto Srebrne Pole, Gmina Jasna Dolina, and Miasto Zielone Wzgórze. All email addresses use `.example` and are nonfunctional.
 
@@ -22,6 +22,20 @@
 | 2025-06-23 | Pilot launches after roughly six weeks of work from the 12 May kickoff. |
 | 2025-11-12 | Six-month result: six paid municipal activations versus a target of ten. |
 | 2025-11-19 | Leadership opens a new decision about retaining the partner or building internally; no choice is recorded yet. |
+
+## Tooling purchase chronology, all synthetic EUR figures
+
+| Date | Request | Outcome |
+| --- | --- | --- |
+| 2025-05-14 | Tomasz Nowak requests Pipedrive Advanced, five seats, 34 EUR per seat, 170 EUR per month, to track the named pilot pipeline. | Karol Bąk approves on 2025-05-15 with a 200 EUR monthly cap; Tomasz owns seats and the November cancellation review. |
+| 2025-06-10 | Ewa Mazur requests Intercom Essential at 74 EUR per month for pilot onboarding chat. | Rejected; revisit if paid activations pass ten. |
+| 2025-07-08 | Tomasz Nowak requests the Pipedrive LeadBooster add-on at 32.50 EUR per month. | Rejected; revisit after 12 November. |
+| 2025-09-02 | Tomasz Nowak and Ewa Mazur request three more Pipedrive seats for Customer Success, eight seats and 272 EUR per month. | Karol Bąk approves on 2025-09-03 from 1 October with a 300 EUR cap. |
+| 2025-06-01 to 2025-11-01 | Six monthly Pipedrive invoices to finance@aster.example: 170 EUR in June, July, August and September, 272 EUR in October and November. | Total 1,224 EUR. |
+
+## Support ticket pattern
+
+Between 14 July and 12 November 2025 the helpdesk received nine tickets from four pilot municipalities (Gmina Brzozowa 4, Gmina Jasna Dolina 2, Miasto Zielone Wzgórze 2, Gmina Lipowa 2; HD-0412, 0431, 0436, 0447, 0452, 0455, 0461, 0466, 0470) about incoming e-Doręczenia messages attached to the wrong CivicFlow case. Cause in the fiction: the partner connector matches on sender, not on the case reference number. Sixteen other tickets are ordinary access, training, export and delivery-status issues. The support pattern watcher agent fires on 17 November 2025 with six tickets from four customers in its 60-day window and proposes automatic case matching as an option for the 19 November decision. Leadership on 19 November had not yet seen a support summary.
 
 ## Decision assumptions, all synthetic PLN figures
 

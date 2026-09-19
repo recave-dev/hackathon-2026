@@ -35,7 +35,7 @@ export interface GraphEdge {
 export interface SourceDocument {
   id: string;
   path: string;
-  kind: 'meeting_note' | 'note' | 'slack' | 'email' | 'external' | 'kpi' | 'decision_record';
+  kind: 'meeting_note' | 'note' | 'slack' | 'email' | 'external' | 'kpi' | 'decision_record' | 'support_ticket' | 'agent_report';
   content: string;
   authoredAt?: string;
   url?: string;

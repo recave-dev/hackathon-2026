@@ -9,6 +9,7 @@ const sourceGroups = [
   { directory: 'emails', kind: 'email' },
   { directory: 'meetings', kind: 'meeting_note' },
   { directory: 'notes', kind: 'note' },
+  { directory: 'tickets', kind: 'support_ticket' },
 ] as const;
 
 export interface SyntheticCorpusOptions {

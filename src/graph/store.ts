@@ -240,6 +240,22 @@ export class KnowledgeGraph {
     });
   }
 
+  /** Active chunks, optionally limited to one source kind and to sources authored on or before a date. */
+  listChunks(filter: { kind?: SourceDocument['kind']; until?: string } = {}): SourceChunk[] {
+    const rows = this.db.prepare(`SELECT c.*, d.path, d.kind FROM chunks c JOIN documents d ON d.id = c.document_id
+      WHERE c.active = 1 AND (? IS NULL OR d.kind = ?) AND (? IS NULL OR c.authored_at <= ?)
+      ORDER BY c.authored_at, d.path, c.start_line`).all(
+      filter.kind ?? null, filter.kind ?? null, filter.until ?? null, filter.until ?? null) as Row[];
+    return rows.map(mapChunk);
+  }
+
+  listDocuments(filter: { kind?: SourceDocument['kind'] } = {}): { id: string; path: string; kind: SourceDocument['kind']; authoredAt: string | null }[] {
+    const rows = this.db.prepare(`SELECT id, path, kind, authored_at FROM documents WHERE (? IS NULL OR kind = ?)
+      ORDER BY authored_at, path`).all(filter.kind ?? null, filter.kind ?? null) as Row[];
+    return rows.map((row) => ({ id: string(row.id), path: string(row.path), kind: row.kind as SourceDocument['kind'],
+      authoredAt: row.authored_at == null ? null : string(row.authored_at) }));
+  }
+
   searchChunks(query: string, limit = 20): SearchHit[] {
     const tokens = query.match(/[\p{L}\p{N}]+/gu)?.slice(0, 12) ?? [];
     if (!tokens.length) return [];

@@ -4,12 +4,12 @@ import { loadSyntheticDocuments, loadSyntheticKpis } from '../src/corpus/synthet
 
 test('synthetic corpus has distinct dated sources and no future leakage', async () => {
   const all = await loadSyntheticDocuments();
-  assert.equal(all.length, 31); // 7 Slack, 10 emails, 10 meetings, 2 notes, profile, signal
+  assert.equal(all.length, 66); // 11 Slack, 16 emails, 10 meetings, 2 notes, 25 tickets, profile, signal
   assert.equal(new Set(all.map((source) => source.id)).size, all.length);
   assert.deepEqual(all.reduce<Record<string, number>>((counts, source) => {
     counts[source.kind] = (counts[source.kind] ?? 0) + 1;
     return counts;
-  }, {}), { external: 1, meeting_note: 10, note: 3, email: 10, slack: 7 });
+  }, {}), { external: 1, meeting_note: 10, note: 3, email: 16, slack: 11, support_ticket: 25 });
 
   const beforeDecision = await loadSyntheticDocuments({ asOf: '2025-05-12' });
   assert(beforeDecision.some((source) => source.id === 'meeting-edoreczenia-decision-2025-05-12'));
