@@ -192,6 +192,69 @@ export interface Note {
   taskIds: Id[]
 }
 
+export type ContextCategory = 'tool' | 'vendor' | 'project'
+
+/** Who does what for a topic, e.g. approves spend or owns the subscription. */
+export interface ContextRole {
+  label: string
+  personId: Id
+  note: string
+}
+
+export interface Invoice {
+  id: Id
+  number: string
+  date: string
+  amount: number
+  seats: number
+  sourceId: Id
+}
+
+export interface ContextSpend {
+  currency: string
+  /** Current recurring charge and what it buys. */
+  monthly: number
+  seats: number
+  /** Spending cap set by the approver. */
+  cap: number
+  invoices: Invoice[]
+}
+
+export type ContextEventKind = 'approved' | 'rejected' | 'note'
+
+export interface ContextEvent {
+  id: Id
+  at: string
+  kind: ContextEventKind
+  title: string
+  detail: string
+  /** Who requested or decided. */
+  personId?: Id
+  /** Monthly amount the request was about. */
+  amount?: number
+  /** True for requests about a different product that share the approver or channel. */
+  related?: boolean
+  sourceId?: Id
+}
+
+/** A company-knowledge topic: what a thing costs, who owns it and where that is written. */
+export interface ContextTopic {
+  id: Id
+  title: string
+  subtitle: string
+  category: ContextCategory
+  /** The question the topic answers, in the CEO's words. */
+  question: string
+  answer: string
+  roles: ContextRole[]
+  spend?: ContextSpend
+  events: ContextEvent[]
+  openItems: string[]
+  relatedDecisionIds: Id[]
+  sourceIds: Id[]
+  updatedAt: string
+}
+
 export interface DemoState {
   version: number
   now: string
@@ -204,6 +267,7 @@ export interface DemoState {
   activities: Activity[]
   changes: Change[]
   meetings: Meeting[]
+  contexts: ContextTopic[]
   notes: Note[]
   session: SessionState
 }

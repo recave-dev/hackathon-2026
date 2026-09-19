@@ -10,10 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as WorkspaceRouteImport } from './routes/_workspace'
 import { Route as AppRouteRouteImport } from './routes/app/route'
+import { Route as WorkspaceContextRouteImport } from './routes/_workspace/context'
+import { Route as WorkspaceDecisionsRouteImport } from './routes/_workspace/decisions'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppHomeRouteImport } from './routes/app/home'
 import { Route as AppSessionRouteImport } from './routes/app/session'
+import { Route as WorkspaceContextIndexRouteImport } from './routes/_workspace/context.index'
+import { Route as WorkspaceContextTopicIdRouteImport } from './routes/_workspace/context.$topicId'
+import { Route as WorkspaceDecisionsIndexRouteImport } from './routes/_workspace/decisions.index'
+import { Route as WorkspaceDecisionsDecisionIdRouteImport } from './routes/_workspace/decisions.$decisionId'
 import { Route as AppDecisionsIndexRouteImport } from './routes/app/decisions.index'
 import { Route as AppDecisionsDecisionIdRouteImport } from './routes/app/decisions.$decisionId'
 import { Route as AppMeetingsMeetingIdRouteImport } from './routes/app/meetings.$meetingId'
@@ -24,10 +31,24 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspaceRoute = WorkspaceRouteImport.update({
+  id: '/_workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/app',
   path: '/app',
   getParentRoute: () => rootRouteImport,
+} as any)
+const WorkspaceContextRoute = WorkspaceContextRouteImport.update({
+  id: '/context',
+  path: '/context',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
+const WorkspaceDecisionsRoute = WorkspaceDecisionsRouteImport.update({
+  id: '/decisions',
+  path: '/decisions',
+  getParentRoute: () => WorkspaceRoute,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
@@ -44,6 +65,27 @@ const AppSessionRoute = AppSessionRouteImport.update({
   path: '/session',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const WorkspaceContextIndexRoute = WorkspaceContextIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkspaceContextRoute,
+} as any)
+const WorkspaceContextTopicIdRoute = WorkspaceContextTopicIdRouteImport.update({
+  id: '/$topicId',
+  path: '/$topicId',
+  getParentRoute: () => WorkspaceContextRoute,
+} as any)
+const WorkspaceDecisionsIndexRoute = WorkspaceDecisionsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkspaceDecisionsRoute,
+} as any)
+const WorkspaceDecisionsDecisionIdRoute =
+  WorkspaceDecisionsDecisionIdRouteImport.update({
+    id: '/$decisionId',
+    path: '/$decisionId',
+    getParentRoute: () => WorkspaceDecisionsRoute,
+  } as any)
 const AppDecisionsIndexRoute = AppDecisionsIndexRouteImport.update({
   id: '/decisions/',
   path: '/decisions/',
@@ -68,12 +110,18 @@ const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
+  '/context': typeof WorkspaceContextRouteWithChildren
+  '/decisions': typeof WorkspaceDecisionsRouteWithChildren
   '/app/home': typeof AppHomeRoute
   '/app/session': typeof AppSessionRoute
   '/app/': typeof AppIndexRoute
+  '/context/$topicId': typeof WorkspaceContextTopicIdRoute
+  '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
   '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
   '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
   '/app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/context/': typeof WorkspaceContextIndexRoute
+  '/decisions/': typeof WorkspaceDecisionsIndexRoute
   '/app/decisions/': typeof AppDecisionsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -81,21 +129,32 @@ export interface FileRoutesByTo {
   '/app/home': typeof AppHomeRoute
   '/app/session': typeof AppSessionRoute
   '/app': typeof AppIndexRoute
+  '/context/$topicId': typeof WorkspaceContextTopicIdRoute
+  '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
   '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
   '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
   '/app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/context': typeof WorkspaceContextIndexRoute
+  '/decisions': typeof WorkspaceDecisionsIndexRoute
   '/app/decisions': typeof AppDecisionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
+  '/_workspace': typeof WorkspaceRouteWithChildren
+  '/_workspace/context': typeof WorkspaceContextRouteWithChildren
+  '/_workspace/decisions': typeof WorkspaceDecisionsRouteWithChildren
   '/app/home': typeof AppHomeRoute
   '/app/session': typeof AppSessionRoute
   '/app/': typeof AppIndexRoute
+  '/_workspace/context/$topicId': typeof WorkspaceContextTopicIdRoute
+  '/_workspace/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
   '/app/decisions/$decisionId': typeof AppDecisionsDecisionIdRoute
   '/app/meetings/$meetingId': typeof AppMeetingsMeetingIdRoute
   '/app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/_workspace/context/': typeof WorkspaceContextIndexRoute
+  '/_workspace/decisions/': typeof WorkspaceDecisionsIndexRoute
   '/app/decisions/': typeof AppDecisionsIndexRoute
 }
 export interface FileRouteTypes {
@@ -103,12 +162,18 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/context'
+    | '/decisions'
     | '/app/home'
     | '/app/session'
     | '/app/'
+    | '/context/$topicId'
+    | '/decisions/$decisionId'
     | '/app/decisions/$decisionId'
     | '/app/meetings/$meetingId'
     | '/app/notes/$noteId'
+    | '/context/'
+    | '/decisions/'
     | '/app/decisions/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -116,26 +181,38 @@ export interface FileRouteTypes {
     | '/app/home'
     | '/app/session'
     | '/app'
+    | '/context/$topicId'
+    | '/decisions/$decisionId'
     | '/app/decisions/$decisionId'
     | '/app/meetings/$meetingId'
     | '/app/notes/$noteId'
+    | '/context'
+    | '/decisions'
     | '/app/decisions'
   id:
     | '__root__'
     | '/'
     | '/app'
+    | '/_workspace'
+    | '/_workspace/context'
+    | '/_workspace/decisions'
     | '/app/home'
     | '/app/session'
     | '/app/'
+    | '/_workspace/context/$topicId'
+    | '/_workspace/decisions/$decisionId'
     | '/app/decisions/$decisionId'
     | '/app/meetings/$meetingId'
     | '/app/notes/$noteId'
+    | '/_workspace/context/'
+    | '/_workspace/decisions/'
     | '/app/decisions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  WorkspaceRoute: typeof WorkspaceRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -147,12 +224,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_workspace': {
+      id: '/_workspace'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof WorkspaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app': {
       id: '/app'
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_workspace/context': {
+      id: '/_workspace/context'
+      path: '/context'
+      fullPath: '/context'
+      preLoaderRoute: typeof WorkspaceContextRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
+    '/_workspace/decisions': {
+      id: '/_workspace/decisions'
+      path: '/decisions'
+      fullPath: '/decisions'
+      preLoaderRoute: typeof WorkspaceDecisionsRouteImport
+      parentRoute: typeof WorkspaceRoute
     }
     '/app/': {
       id: '/app/'
@@ -174,6 +272,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/session'
       preLoaderRoute: typeof AppSessionRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/_workspace/context/': {
+      id: '/_workspace/context/'
+      path: '/'
+      fullPath: '/context/'
+      preLoaderRoute: typeof WorkspaceContextIndexRouteImport
+      parentRoute: typeof WorkspaceContextRoute
+    }
+    '/_workspace/context/$topicId': {
+      id: '/_workspace/context/$topicId'
+      path: '/$topicId'
+      fullPath: '/context/$topicId'
+      preLoaderRoute: typeof WorkspaceContextTopicIdRouteImport
+      parentRoute: typeof WorkspaceContextRoute
+    }
+    '/_workspace/decisions/': {
+      id: '/_workspace/decisions/'
+      path: '/'
+      fullPath: '/decisions/'
+      preLoaderRoute: typeof WorkspaceDecisionsIndexRouteImport
+      parentRoute: typeof WorkspaceDecisionsRoute
+    }
+    '/_workspace/decisions/$decisionId': {
+      id: '/_workspace/decisions/$decisionId'
+      path: '/$decisionId'
+      fullPath: '/decisions/$decisionId'
+      preLoaderRoute: typeof WorkspaceDecisionsDecisionIdRouteImport
+      parentRoute: typeof WorkspaceDecisionsRoute
     }
     '/app/decisions/': {
       id: '/app/decisions/'
@@ -230,9 +356,50 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
   AppRouteRouteChildren,
 )
 
+interface WorkspaceContextRouteChildren {
+  WorkspaceContextTopicIdRoute: typeof WorkspaceContextTopicIdRoute
+  WorkspaceContextIndexRoute: typeof WorkspaceContextIndexRoute
+}
+
+const WorkspaceContextRouteChildren: WorkspaceContextRouteChildren = {
+  WorkspaceContextTopicIdRoute: WorkspaceContextTopicIdRoute,
+  WorkspaceContextIndexRoute: WorkspaceContextIndexRoute,
+}
+
+const WorkspaceContextRouteWithChildren =
+  WorkspaceContextRoute._addFileChildren(WorkspaceContextRouteChildren)
+
+interface WorkspaceDecisionsRouteChildren {
+  WorkspaceDecisionsDecisionIdRoute: typeof WorkspaceDecisionsDecisionIdRoute
+  WorkspaceDecisionsIndexRoute: typeof WorkspaceDecisionsIndexRoute
+}
+
+const WorkspaceDecisionsRouteChildren: WorkspaceDecisionsRouteChildren = {
+  WorkspaceDecisionsDecisionIdRoute: WorkspaceDecisionsDecisionIdRoute,
+  WorkspaceDecisionsIndexRoute: WorkspaceDecisionsIndexRoute,
+}
+
+const WorkspaceDecisionsRouteWithChildren =
+  WorkspaceDecisionsRoute._addFileChildren(WorkspaceDecisionsRouteChildren)
+
+interface WorkspaceRouteChildren {
+  WorkspaceContextRoute: typeof WorkspaceContextRouteWithChildren
+  WorkspaceDecisionsRoute: typeof WorkspaceDecisionsRouteWithChildren
+}
+
+const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+  WorkspaceContextRoute: WorkspaceContextRouteWithChildren,
+  WorkspaceDecisionsRoute: WorkspaceDecisionsRouteWithChildren,
+}
+
+const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
+  WorkspaceRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
+  WorkspaceRoute: WorkspaceRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

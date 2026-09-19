@@ -1,4 +1,5 @@
 import type {
+  ContextTopic,
   Decision,
   DecisionOption,
   DemoState,
@@ -8,7 +9,7 @@ import type {
   TranscriptSegment,
 } from './types'
 
-export const STATE_VERSION = 3
+export const STATE_VERSION = 4
 
 /** Fixed demo clock: Tuesday, 10 November 2026, 09:00 (local time). */
 export const DEMO_NOW = '2026-11-10T09:00:00'
@@ -21,6 +22,7 @@ export const PEOPLE = [
   { id: 'p-piotr', name: 'Piotr Zieliński', role: 'CTO', company: 'Droker' },
   { id: 'p-kasia', name: 'Katarzyna Wójcik', role: 'Head of Sales', company: 'Droker' },
   { id: 'p-michal', name: 'Michał Baran', role: 'CFO', company: 'Droker' },
+  { id: 'p-ola', name: 'Aleksandra Mazur', role: 'Customer Success Lead', company: 'Droker' },
   { id: 'p-marek', name: 'Marek Lis', role: 'COO', company: 'Alfa' },
   { id: 'p-ewa', name: 'Ewa Kot', role: 'Kierownik IT', company: 'Alfa' },
 ] as const satisfies readonly DemoState['people'][number][]
@@ -140,6 +142,99 @@ export const SOURCES: DemoState['sources'] = [
     excerpt: 'Kasia: dwanaście gmin jest zainteresowanych konektorem.',
     date: '2026-05-04',
     author: 'Katarzyna Wójcik',
+  },
+  {
+    id: 'src-pd-request',
+    kind: 'slack',
+    title: '#purchase-requests · Pipedrive dla pipeline’u pilota',
+    excerpt:
+      'Kasia: Proszę o Pipedrive Advanced, 5 miejsc po 34 EUR, razem 170 EUR miesięcznie, do śledzenia nazwanego pipeline’u pilota e-Doręczenia, o który Tomasz prosił 12 maja. Rozliczenie miesięczne, bez zobowiązania rocznego.',
+    date: '2026-05-14',
+    author: 'Katarzyna Wójcik',
+  },
+  {
+    id: 'src-pd-approval',
+    kind: 'slack',
+    title: '#purchase-requests · Zatwierdzenie Pipedrive',
+    excerpt:
+      'Michał: Zatwierdzam: Pipedrive Advanced, 5 miejsc, rozliczenie miesięczne, limit 200 EUR miesięcznie. Kasia odpowiada za listę miejsc i przegląd anulowania po listopadowym wyniku pilota. Każdy dodatek lub zmiana liczby miejsc wraca do tego kanału.',
+    date: '2026-05-15',
+    author: 'Michał Baran',
+  },
+  {
+    id: 'src-intercom-request',
+    kind: 'slack',
+    title: '#purchase-requests · Intercom do onboardingu pilota',
+    excerpt:
+      'Michał: Na razie odrzucam — gminy z pilota korzystają z istniejącej skrzynki helpdesku. Wracamy do narzędzia czatowego, jeśli płatne aktywacje przekroczą dziesięć.',
+    date: '2026-06-10',
+    author: 'Michał Baran',
+  },
+  {
+    id: 'src-leadbooster-request',
+    kind: 'slack',
+    title: '#purchase-requests · Dodatek Pipedrive LeadBooster',
+    excerpt:
+      'Michał: Odrzucam — pilot ma jedną płatną aktywację, a dodatek celuje w leady przychodzące, których nie gonimy, dopóki nazwany pipeline nie skonwertuje. Pipedrive zostaje na zatwierdzonych 170 EUR miesięcznie.',
+    date: '2026-07-08',
+    author: 'Michał Baran',
+  },
+  {
+    id: 'src-pd-seats',
+    kind: 'slack',
+    title: '#purchase-requests · Trzy dodatkowe miejsca dla Customer Success',
+    excerpt:
+      'Michał: Zatwierdzam trzy dodatkowe miejsca od 1 października, łącznie osiem, nowy limit 300 EUR miesięcznie. Kasia pozostaje właścicielką subskrypcji i dodaje miejsca 1 października, żeby uniknąć faktury proporcjonalnej.',
+    date: '2026-09-03',
+    author: 'Michał Baran',
+  },
+  {
+    id: 'src-pd-inv-06',
+    kind: 'email',
+    title: 'Pipedrive: faktura PD-2026-06-0417',
+    excerpt: 'Okres 1–30 czerwca 2026: 170,00 EUR za 5 miejsc Advanced. Karta firmowa kończąca się na 4471.',
+    date: '2026-06-01',
+    author: 'billing@pipedrive.example',
+  },
+  {
+    id: 'src-pd-inv-07',
+    kind: 'email',
+    title: 'Pipedrive: faktura PD-2026-07-0512',
+    excerpt: 'Okres 1–31 lipca 2026: 170,00 EUR za 5 miejsc Advanced.',
+    date: '2026-07-01',
+    author: 'billing@pipedrive.example',
+  },
+  {
+    id: 'src-pd-inv-08',
+    kind: 'email',
+    title: 'Pipedrive: faktura PD-2026-08-0603',
+    excerpt: 'Okres 1–31 sierpnia 2026: 170,00 EUR za 5 miejsc Advanced.',
+    date: '2026-08-01',
+    author: 'billing@pipedrive.example',
+  },
+  {
+    id: 'src-pd-inv-09',
+    kind: 'email',
+    title: 'Pipedrive: faktura PD-2026-09-0731',
+    excerpt: 'Okres 1–30 września 2026: 170,00 EUR za 5 miejsc Advanced.',
+    date: '2026-09-01',
+    author: 'billing@pipedrive.example',
+  },
+  {
+    id: 'src-pd-inv-10',
+    kind: 'email',
+    title: 'Pipedrive: faktura PD-2026-10-0858',
+    excerpt: 'Okres 1–31 października 2026: 272,00 EUR za 8 miejsc Advanced.',
+    date: '2026-10-01',
+    author: 'billing@pipedrive.example',
+  },
+  {
+    id: 'src-pd-inv-11',
+    kind: 'email',
+    title: 'Pipedrive: faktura PD-2026-11-0942',
+    excerpt: 'Okres 1–30 listopada 2026: 272,00 EUR za 8 miejsc Advanced.',
+    date: '2026-11-01',
+    author: 'billing@pipedrive.example',
   },
 ]
 
@@ -443,6 +538,112 @@ export const INITIAL_DECISIONS: Decision[] = [
   },
 ]
 
+/** Company-knowledge topics shown under Context. Dates follow the demo timeline. */
+export const CONTEXT_TOPICS: ContextTopic[] = [
+  {
+    id: 'ctx-pipedrive',
+    title: 'Pipedrive',
+    subtitle: 'CRM · Sprzedaż i Customer Success',
+    category: 'tool',
+    question: 'Ile kosztował nas Pipedrive w ostatnich sześciu miesiącach i kto za to odpowiada?',
+    answer:
+      'Subskrypcję kupiono w maju, żeby śledzić nazwany pipeline pilota e-Doręczenia. Zatwierdził ją CFO z limitem miesięcznym; właścicielką miejsc i przeglądu anulowania jest Kasia. Wniosek o dodatek LeadBooster odrzucono w lipcu, więc rachunek rósł tylko raz — po dodaniu miejsc dla Customer Success od października.',
+    roles: [
+      {
+        label: 'Zatwierdza wydatki',
+        personId: 'p-michal',
+        note: 'Zatwierdził subskrypcję 15 maja (limit 200 EUR) i rozszerzenie 3 września (limit 300 EUR).',
+      },
+      {
+        label: 'Odpowiada za subskrypcję',
+        personId: 'p-kasia',
+        note: 'Właścicielka listy miejsc i przeglądu anulowania po wyniku pilota.',
+      },
+      {
+        label: 'Korzysta',
+        personId: 'p-ola',
+        note: 'Trzy miejsca Customer Success od 1 października — etapy onboardingu obok etapów sprzedaży.',
+      },
+    ],
+    spend: {
+      currency: 'EUR',
+      monthly: 272,
+      seats: 8,
+      cap: 300,
+      invoices: [
+        { id: 'inv-06', number: 'PD-2026-06-0417', date: '2026-06-01', amount: 170, seats: 5, sourceId: 'src-pd-inv-06' },
+        { id: 'inv-07', number: 'PD-2026-07-0512', date: '2026-07-01', amount: 170, seats: 5, sourceId: 'src-pd-inv-07' },
+        { id: 'inv-08', number: 'PD-2026-08-0603', date: '2026-08-01', amount: 170, seats: 5, sourceId: 'src-pd-inv-08' },
+        { id: 'inv-09', number: 'PD-2026-09-0731', date: '2026-09-01', amount: 170, seats: 5, sourceId: 'src-pd-inv-09' },
+        { id: 'inv-10', number: 'PD-2026-10-0858', date: '2026-10-01', amount: 272, seats: 8, sourceId: 'src-pd-inv-10' },
+        { id: 'inv-11', number: 'PD-2026-11-0942', date: '2026-11-01', amount: 272, seats: 8, sourceId: 'src-pd-inv-11' },
+      ],
+    },
+    events: [
+      {
+        id: 'ev-pd-approved',
+        at: '2026-05-15T09:12:00',
+        kind: 'approved',
+        title: 'Pipedrive Advanced, 5 miejsc',
+        detail: 'Wniosek Kasi z 14 maja. Rozliczenie miesięczne, limit 200 EUR. Start 1 czerwca razem z pilotem.',
+        personId: 'p-michal',
+        amount: 170,
+        sourceId: 'src-pd-approval',
+      },
+      {
+        id: 'ev-intercom-rejected',
+        at: '2026-06-10T11:31:00',
+        kind: 'rejected',
+        title: 'Intercom Essential do onboardingu',
+        detail: 'Inny produkt, ten sam kanał i ten sam pilot. Wniosek Oli odrzucony: gminy korzystają ze skrzynki helpdesku; powrót do tematu po przekroczeniu 10 płatnych aktywacji.',
+        personId: 'p-michal',
+        amount: 74,
+        related: true,
+        sourceId: 'src-intercom-request',
+      },
+      {
+        id: 'ev-leadbooster-rejected',
+        at: '2026-07-08T14:25:00',
+        kind: 'rejected',
+        title: 'Dodatek Pipedrive LeadBooster',
+        detail: 'Wniosek Kasi. Odrzucony: jedna płatna aktywacja, a dodatek celuje w leady przychodzące. Powrót po przeglądzie 12 listopada.',
+        personId: 'p-michal',
+        amount: 32.5,
+        sourceId: 'src-leadbooster-request',
+      },
+      {
+        id: 'ev-pd-seats',
+        at: '2026-09-03T08:58:00',
+        kind: 'approved',
+        title: 'Trzy miejsca dla Customer Success',
+        detail: 'Wniosek Kasi i Oli z 2 września po przeglądzie pilota. Osiem miejsc od 1 października, nowy limit 300 EUR.',
+        personId: 'p-michal',
+        amount: 272,
+        sourceId: 'src-pd-seats',
+      },
+    ],
+    openItems: [
+      'Przegląd anulowania po wyniku pilota (6 z 10 aktywacji) — zapisany przy zatwierdzeniu w maju, właścicielka: Kasia. Termin nie został ustalony.',
+      'Wnioski o Intercom i LeadBooster miały wrócić po przeglądzie 12 listopada.',
+    ],
+    relatedDecisionIds: ['dec-edoreczenia'],
+    sourceIds: [
+      'src-pd-request',
+      'src-pd-approval',
+      'src-intercom-request',
+      'src-leadbooster-request',
+      'src-pd-seats',
+      'src-pd-inv-06',
+      'src-pd-inv-07',
+      'src-pd-inv-08',
+      'src-pd-inv-09',
+      'src-pd-inv-10',
+      'src-pd-inv-11',
+    ],
+    updatedAt: '2026-11-01T08:05:00',
+  },
+]
+
 export const INITIAL_TASKS: DemoState['tasks'] = [
   {
     id: 'task-qa-eval',
@@ -625,6 +826,7 @@ export function createSeedState(): DemoState {
     activities: structuredClone(INITIAL_ACTIVITIES),
     changes: structuredClone(INITIAL_CHANGES),
     meetings: structuredClone(INITIAL_MEETINGS),
+    contexts: structuredClone(CONTEXT_TOPICS),
     notes: [],
     session: createSession(),
   }

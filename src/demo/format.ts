@@ -83,3 +83,14 @@ export const plural = (n: number, one: string, few: string, many: string): strin
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few
   return many
 }
+
+/** "1 224 EUR" — thousands grouped with a narrow space, cents only when present. */
+export function formatMoney(amount: number, currency: string): string {
+  const digits = Number.isInteger(amount) ? 0 : 2
+  const [whole, fraction] = Math.abs(amount).toFixed(digits).split('.')
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f')
+  return `${amount < 0 ? '−' : ''}${grouped}${fraction ? `,${fraction}` : ''} ${currency}`
+}
+
+const monthShortFmt = new Intl.DateTimeFormat('pl-PL', { month: 'short' })
+export const formatMonthShort = (iso: string): string => monthShortFmt.format(parseLocal(iso)).replace('.', '')

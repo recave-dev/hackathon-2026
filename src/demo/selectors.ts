@@ -1,5 +1,5 @@
-import { parseLocal } from './format'
-import type { Decision, DecisionStatus, DemoState, Id } from './types'
+import { parseLocal, toLocalIso } from './format'
+import type { ContextCategory, ContextSpend, Decision, DecisionStatus, DemoState, Id, Invoice } from './types'
 
 export type DecisionFilter = 'pending' | 'snoozed' | 'history'
 
@@ -48,3 +48,26 @@ export const inProgressDecisions = (state: DemoState): Decision[] =>
   state.decisions.filter((d) => d.execution.some((s) => s.status === 'waiting'))
 
 export const openTasks = (state: DemoState) => state.tasks.filter((t) => t.status === 'open')
+
+export const CONTEXT_CATEGORY_LABEL: Record<ContextCategory, string> = {
+  tool: 'Narzędzie',
+  vendor: 'Dostawca',
+  project: 'Projekt',
+}
+
+/** Inclusive window ending at `now`, starting `months` calendar months earlier. */
+export function spendWindow(now: string, months = 6): { from: string; to: string } {
+  const to = parseLocal(now)
+  const from = new Date(to)
+  from.setMonth(from.getMonth() - months)
+  return { from: toLocalIso(from).slice(0, 10), to: now.slice(0, 10) }
+}
+
+export function invoicesInWindow(spend: ContextSpend, window: { from: string; to: string }): Invoice[] {
+  return spend.invoices
+    .filter((inv) => inv.date >= window.from && inv.date <= window.to)
+    .sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export const sumInvoices = (invoices: Invoice[]): number =>
+  Math.round(invoices.reduce((sum, inv) => sum + inv.amount, 0) * 100) / 100
