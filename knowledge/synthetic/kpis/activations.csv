@@ -1,0 +1,10 @@
+observation_id,date,decision_id,metric,period,value,target,unit,source_note
+digital-signature-target,2024-04-18,decision:digital-signature-build,paid_customers,12_month_target,25,25,customers,Approved 2024 feature case
+digital-signature-actual,2025-04-18,decision:digital-signature-build,paid_customers,12_month_actual,14,25,customers,Billing feature report
+partner-pilot-target,2025-05-12,decision:edoreczenia-build-or-partner,paid_municipal_activations,6_month_target,10,10,customers,CEO decision record
+partner-pilot-2025-06,2025-06-30,decision:edoreczenia-build-or-partner,paid_municipal_activations,cumulative_actual,0,10,customers,Billing activation export
+partner-pilot-2025-07,2025-07-31,decision:edoreczenia-build-or-partner,paid_municipal_activations,cumulative_actual,2,10,customers,Billing activation export
+partner-pilot-2025-08,2025-08-31,decision:edoreczenia-build-or-partner,paid_municipal_activations,cumulative_actual,3,10,customers,Billing activation export
+partner-pilot-2025-09,2025-09-30,decision:edoreczenia-build-or-partner,paid_municipal_activations,cumulative_actual,4,10,customers,Billing activation export
+partner-pilot-2025-10,2025-10-31,decision:edoreczenia-build-or-partner,paid_municipal_activations,cumulative_actual,5,10,customers,Billing activation export
+partner-pilot-2025-11,2025-11-12,decision:edoreczenia-build-or-partner,paid_municipal_activations,6_month_actual,6,10,customers,Billing activation export

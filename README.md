@@ -211,3 +211,19 @@ npm run typecheck
 `npm run demo` uses a deterministic extractor fixture and does not make a cloud call. To try the OpenAI adapter, set `OPENAI_API_KEY` and `OPENAI_MODEL`, then run `npm run demo -- --live`. The adapter has not been live-tested against a cloud account.
 
 The graph can be imported from `./src/graph/index.ts` in server-side application code. `KnowledgeGraph` provides `ingestDocument`, `applyProposal`, `searchNodes`, `searchChunks`, and `buildDecisionContext`. The context method returns cited evidence for a later synthesis call; it does not generate a recommendation or a numeric forecast. See [the ingestion design](docs/graph-and-ingestion-design.md) and [project ideas](docs/glossary/project-ideas.md).
+
+## Synthetic demo corpus
+
+[Aster Systems corpus guide](knowledge/synthetic/README.md) describes the fictional Slack threads, customer and vendor emails, meeting notes, and KPI observations for the build-versus-partner demo. The server-side loader returns graph-ready source documents and typed KPI rows:
+
+```ts
+import { loadSyntheticDocuments, loadSyntheticKpis } from './src/corpus/synthetic.ts';
+
+const sources = await loadSyntheticDocuments({ asOf: '2025-05-12' });
+const kpis = await loadSyntheticKpis({ asOf: '2025-05-12' });
+// Pass each source to graph.ingestDocument(source, extractor), then review its proposals.
+```
+
+Use `asOf: '2025-11-19'` to replay the measured pilot outcome and next decision. The loader excludes the canonical fact sheet and corpus README so a pre-decision view cannot pick up future facts from those files.
+
+The repository includes two shared graph databases, `knowledge/synthetic/demo-v2-2025-05-12.sqlite` and `knowledge/synthetic/demo-v2-2025-11-19.sqlite`. To make a separate local copy, run `npm run import:synthetic -- --as-of 2025-05-12` or use `2025-11-19` for the outcome snapshot. The command prints the path of its ignored `local-demo-v2-<date>.sqlite` file. The web UI is not yet connected to these databases.

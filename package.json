@@ -18,6 +18,7 @@
     "preview": "vite preview",
     "test": "node --test tests/*.test.ts",
     "demo": "node scripts/demo.ts",
+    "import:synthetic": "node scripts/import-synthetic.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
