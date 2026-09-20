@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { SCENARIOS } from '../src/demo/knowledge.ts'
-import { isDismissal, matchWake } from '../src/lib/wake-word.ts'
+import { isDismissal, isExit, matchWake } from '../src/lib/wake-word.ts'
 import { findContacts } from '../src/server/directory.ts'
 import { fallback } from '../src/server/relevance.ts'
 import { replayScenario } from '../scripts/replay.ts'
@@ -39,6 +39,17 @@ test('dismissal phrases', () => {
   }
   assert.equal(isDismissal(matchWake('Bolek, kim jest Darek Wylon?').command), false)
   assert.equal(isDismissal(matchWake('Bolek, ile płacimy za Pipedrive?').command), false)
+})
+
+test('exit phrases leave the meeting, with or without the name', () => {
+  for (const said of ['Spotkanie skończone.', 'Kończymy spotkanie', 'Wyjdź do menu', 'Bolek, kończymy spotkanie', 'Bolku, wyjdź do menu głównego', 'OK, koniec spotkania.', 'No dobra, spotkanie zakończone', 'Wróć do menu']) {
+    const m = matchWake(said)
+    assert.equal(isExit(m.addressed ? m.command : said), true, said)
+  }
+  for (const said of ['Kończymy.', 'OK, dzięki. Kończymy.', 'Jak kończymy spotkanie, wyślij notatkę', 'Spotkanie skończone o piątej?', 'Bolek, pokaż menu', 'Kto prowadzi spotkanie?']) {
+    const m = matchWake(said)
+    assert.equal(isExit(m.addressed ? m.command : said), false, said)
+  }
 })
 
 test('offline fallback triages addressed requests', () => {

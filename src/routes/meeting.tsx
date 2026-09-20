@@ -17,7 +17,7 @@ import { PEOPLE } from '@/demo/seed'
 import { matchDeck, type Deck, type DeckSummary } from '@/lib/slides'
 import { useTranscription } from '@/lib/transcription'
 import { cn } from '@/lib/utils'
-import { ASSISTANT_NAME, isDismissal, matchWake } from '@/lib/wake-word'
+import { ASSISTANT_NAME, isDismissal, isExit, matchWake } from '@/lib/wake-word'
 import type { OrbState } from '@/registry/lib/orb-state'
 import { NebulaOrb } from '@/registry/orbe/nebula-orb/nebula-orb'
 import { ORB_COLORS } from '@/routes/app/index'
@@ -569,6 +569,13 @@ function MeetingScreen() {
       if (armed) dispatch({ type: 'arm', armed: false })
 
       const command = wake.addressed ? wake.command || text : text
+      // "Kończymy spotkanie" / "wyjdź do menu", with or without the name: back to the dashboard.
+      // Unmounting stops the microphone; the session stays on the server.
+      if (isExit(command)) {
+        dispatch({ type: 'say', utterance: { ...base, addressed: true, skipped: true } })
+        void navigate({ to: '/' })
+        return
+      }
       if (addressed && isDismissal(command)) {
         dispatch({ type: 'say', utterance: { ...base, addressed: true, skipped: true, dismissed: true } })
         dispatch({ type: 'dismiss' })
@@ -694,7 +701,7 @@ function MeetingScreen() {
 
       runNormal()
     },
-    [meetingInfo, sessionId, trayItems, openTrayItem, pushToSession, send, openDeck, refreshDecks, deckList],
+    [meetingInfo, sessionId, trayItems, openTrayItem, pushToSession, send, openDeck, refreshDecks, deckList, navigate],
   )
 
   // Poll agent jobs and background report tasks while any are running.

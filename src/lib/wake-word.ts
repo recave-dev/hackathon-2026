@@ -25,6 +25,23 @@ const DISMISS = /^(?:ok(?:ej)?[,.!\s]*|no[,.!\s]*|dobra[,.!\s]*|to\s+)?(?:dzi[e�
 /** "Bolek, dzięki" and friends: hide what is on screen instead of looking something up. */
 export const isDismissal = (command: string): boolean => DISMISS.test(command.trim())
 
+// Leaving the meeting screen. Anchored on both ends so "kończymy spotkanie" is a
+// command, but "jak kończymy spotkanie, wyślij notatkę" is not.
+const EXIT = new RegExp(
+  '^(?:(?:ok(?:ej)?|no|dobra|to|i)[,.!\\s]+)*' +
+    '(?:' +
+    'spotkanie\\s+(?:jest\\s+)?(?:sko[nń]czone|zako[nń]czone)' +
+    '|ko[nń]czymy\\s+(?:to\\s+|ju[żz]\\s+)?spotkanie' +
+    '|(?:zako[nń]cz|zamknij)\\s+spotkanie' +
+    '|koniec\\s+spotkania' +
+    '|(?:wyjd[źz]|wr[óo][ćc]|przejd[źz])\\s+do\\s+menu(?:\\s+g[łl][óo]wnego)?' +
+    ')[.,!?…\\s]*$',
+  'iu',
+)
+
+/** "Kończymy spotkanie", "wyjdź do menu": leave the meeting screen for the dashboard. */
+export const isExit = (command: string): boolean => EXIT.test(command.trim())
+
 const HESITATION = /^(?:y+|e+|hmm+|ehm+|eee|no|tak|więc|to|słuchaj|proszę|czekaj|moment)[.,!?…\s]*$/iu
 
 const FILLER = /^(?:[\s,.!?;:—-]|powiedz(?: mi)?|pokaż(?: mi)?|proszę|tell me|show me)+/i
