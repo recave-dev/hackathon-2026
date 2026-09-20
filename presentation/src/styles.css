@@ -1,0 +1,117 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+
+@theme {
+  --font-sans: "Geist Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-background: oklch(0.13 0.012 262);
+  --color-surface: oklch(0.17 0.012 262);
+  --color-surface-2: oklch(0.21 0.013 262);
+  --color-foreground: oklch(0.96 0.005 80);
+  --color-muted: oklch(0.68 0.014 262);
+  --color-line: oklch(1 0 0 / 10%);
+  --color-accent: oklch(0.82 0.08 235);
+  --color-accent-2: oklch(0.88 0.06 190);
+  --color-warm: oklch(0.85 0.12 75);
+  --color-danger: oklch(0.7 0.17 25);
+  --color-ok: oklch(0.78 0.14 150);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  color-scheme: dark;
+}
+
+/* Slide element the narrator can point at. The orb flies to it while `data-cue-active` is set. */
+.cue {
+  position: relative;
+  transition:
+    transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 500ms ease,
+    background-color 500ms ease,
+    border-color 500ms ease,
+    opacity 500ms ease;
+}
+
+.cue[data-cue-active="true"] {
+  transform: translateY(-2px) scale(1.015);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--color-accent) 70%, transparent),
+    0 18px 60px -20px color-mix(in oklch, var(--color-accent) 60%, transparent);
+  border-color: color-mix(in oklch, var(--color-accent) 60%, transparent);
+}
+
+/* Siblings dim slightly while one cue is active so the pointed element stands out. */
+[data-has-active-cue="true"] .cue:not([data-cue-active="true"]) {
+  opacity: 0.55;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-enter {
+  animation: slide-in 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.slide-enter > * {
+  animation: slide-in 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.slide-enter > *:nth-child(2) {
+  animation-delay: 80ms;
+}
+.slide-enter > *:nth-child(3) {
+  animation-delay: 160ms;
+}
+.slide-enter > *:nth-child(4) {
+  animation-delay: 240ms;
+}
+.slide-enter > *:nth-child(5) {
+  animation-delay: 320ms;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.orb-ring {
+  animation: pulse-ring 1600ms ease-out infinite;
+}
+
+.caption-word[data-spoken="true"] {
+  color: var(--color-foreground);
+}
+
+.caption-word {
+  color: color-mix(in oklch, var(--color-foreground) 45%, transparent);
+  transition: color 120ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cue,
+  .slide-enter,
+  .slide-enter > * {
+    animation: none;
+    transition: none;
+  }
+}

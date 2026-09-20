@@ -1,0 +1,38 @@
+{
+  "name": "droker-presentation",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite dev --port 3100",
+    "build": "vite build",
+    "start": "node .output/server/index.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "tts:prewarm": "node --env-file=.env scripts/prewarm-tts.ts"
+  },
+  "dependencies": {
+    "@react-three/fiber": "^9.7.0",
+    "@tanstack/react-router": "^1.170.38",
+    "@tanstack/react-start": "^1.168.56",
+    "@tailwindcss/vite": "^4.1.18",
+    "@fontsource-variable/geist": "^5.3.0",
+    "lucide-react": "^1.47.0",
+    "nitro": "3.0.260610-beta",
+    "react": "~19.2.0",
+    "react-dom": "~19.2.0",
+    "tailwindcss": "^4.1.18",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "~19.2.0",
+    "@types/react-dom": "~19.2.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  }
+}
