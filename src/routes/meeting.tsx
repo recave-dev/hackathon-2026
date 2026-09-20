@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { BugIcon, EarIcon, LayoutGridIcon, MicIcon, MicOffIcon, PauseIcon, PlayIcon, RotateCcwIcon, SendIcon, SkipForwardIcon, SparklesIcon, XIcon } from 'lucide-react'
+import { ArrowLeftIcon, RotateCcwIcon, SendIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react'
 
 import { AgentCardView, AgentErrorView, AgentLoadingView } from '@/components/meeting/agent-card'
@@ -7,15 +7,12 @@ import { EmailSentView } from '@/components/meeting/email-sent-card'
 import { KnowledgeCardView } from '@/components/meeting/knowledge-card'
 import { PersonCardView } from '@/components/meeting/person-card'
 import { ReportCardView } from '@/components/meeting/report-card'
-import { TranscriptRail, expectedId, shownId, type Utterance } from '@/components/meeting/transcript-rail'
+import { TranscriptRail, shownId, type Utterance } from '@/components/meeting/transcript-rail'
 import { Tray, type TrayItem } from '@/components/meeting/tray'
 import { Button } from '@/components/ui/button'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import { formatDuration } from '@/demo/format'
-import { FACET_LABEL, SCENARIOS, cardById, type Facet, type ListeningMode } from '@/demo/knowledge'
+import { FACET_LABEL, SCENARIOS, cardById, type Facet } from '@/demo/knowledge'
 import { personCardById } from '@/demo/people'
 import { PEOPLE } from '@/demo/seed'
-import { intentById } from '@/lib/intents'
 import { useTranscription } from '@/lib/transcription'
 import { cn } from '@/lib/utils'
 import { ASSISTANT_NAME, isDismissal, matchWake } from '@/lib/wake-word'
@@ -223,7 +220,6 @@ interface Persisted extends Pick<MeetingState, 'utterances' | 'results' | 'histo
   sessionId: string
   scenarioId: string
   cursor: number
-  mode: ListeningMode
 }
 
 const newSessionId = (): string => `meet-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 6)}`
@@ -247,7 +243,6 @@ function loadPersisted(): Persisted | null {
       sessionId: parsed.sessionId ?? newSessionId(),
       scenarioId: parsed.scenarioId ?? SCENARIOS[0]!.id,
       cursor: parsed.cursor ?? 0,
-      mode: parsed.mode ?? 'wake',
     }
   } catch {
     return null
@@ -283,12 +278,9 @@ function MeetingScreen() {
   const [sessionId, setSessionId] = useState<string>('')
   const [scenarioId, setScenarioId] = useState(SCENARIOS[0]!.id)
   const scenario = useMemo(() => SCENARIOS.find((s) => s.id === scenarioId) ?? SCENARIOS[0]!, [scenarioId])
-  const [mode, setMode] = useState<ListeningMode>(scenario.mode)
   const [cursor, setCursor] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [debug, setDebug] = useState(false)
-  const [startedAt, setStartedAt] = useState<number | null>(null)
-  const [elapsed, setElapsed] = useState(0)
   const [typed, setTyped] = useState('')
   const [sendingDraft, setSendingDraft] = useState<string | null>(null)
   const seq = useRef(0)
@@ -307,7 +299,6 @@ function MeetingScreen() {
       seq.current = saved.seq + saved.utterances.length
       if (SCENARIOS.some((s) => s.id === saved.scenarioId)) setScenarioId(saved.scenarioId)
       setCursor(saved.cursor)
-      setMode(saved.mode)
       setSessionId(saved.sessionId)
     } else {
       setSessionId(newSessionId())
@@ -317,12 +308,12 @@ function MeetingScreen() {
     if (!restored.current || !sessionId) return
     try {
       const { utterances, results, history, seq: s, pendingTasks, drafts } = state
-      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, drafts, sessionId, scenarioId, cursor, mode }
+      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, drafts, sessionId, scenarioId, cursor }
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
     } catch {
       /* storage full or blocked: the meeting simply is not persisted */
     }
-  }, [state, sessionId, scenarioId, cursor, mode])
+  }, [state, sessionId, scenarioId, cursor])
 
   const meetingInfo = useMemo(
     () => ({ title: scenario.title, goal: scenario.goal, participants: scenario.participantIds.map(speakerLabel) }),
@@ -404,7 +395,6 @@ function MeetingScreen() {
     (speaker: string, text: string, expect?: Utterance['expect']) => {
       const id = `u-${Date.now().toString(36)}-${seq.current}`
       const mySeq = ++seq.current
-      setStartedAt((s) => s ?? Date.now())
       const base: Utterance = { id, speaker, text, at: Date.now(), expect }
 
       const wake = matchWake(text)
@@ -424,7 +414,8 @@ function MeetingScreen() {
         return
       }
 
-      if (mode === 'wake' && !addressed) {
+      // The agent only acts when addressed by name; everything else is context.
+      if (!addressed) {
         dispatch({ type: 'say', utterance: { ...base, skipped: true } })
         // Not judged, but it is context: send it to the session.
         setTimeout(() => pushToSession(), 0)
@@ -480,7 +471,7 @@ function MeetingScreen() {
             .catch((err: unknown) => dispatch({ type: 'failed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
         })
     },
-    [meetingInfo, mode, sessionId, trayItems, openTrayItem, pushToSession, send],
+    [meetingInfo, sessionId, trayItems, openTrayItem, pushToSession, send],
   )
 
   // Poll agent jobs and background report tasks while any are running.
@@ -549,18 +540,10 @@ function MeetingScreen() {
     return () => window.clearTimeout(id)
   }, [playing, cursor, scenario, stepScenario])
 
-  useEffect(() => {
-    if (startedAt === null) return
-    const id = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000)
-    return () => window.clearInterval(id)
-  }, [startedAt])
-
   const reset = useCallback(() => {
     speech.stop()
     setPlaying(false)
     setCursor(0)
-    setStartedAt(null)
-    setElapsed(0)
     dispatch({ type: 'reset' })
     synced.current = 0
     const fresh = newSessionId()
@@ -573,13 +556,6 @@ function MeetingScreen() {
     }
   }, [speech, meetingInfo.title])
 
-  const changeScenario = (id: string) => {
-    reset()
-    setScenarioId(id)
-    const next = SCENARIOS.find((s) => s.id === id)
-    if (next) setMode(next.mode)
-  }
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
@@ -591,6 +567,8 @@ function MeetingScreen() {
         stepScenario()
       } else if (e.key === 'Escape') {
         dispatch({ type: 'dismiss' })
+      } else if (e.key === 'd' && !e.metaKey && !e.ctrlKey) {
+        setDebug((d) => !d)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -606,8 +584,6 @@ function MeetingScreen() {
   }
 
   const last = state.utterances.at(-1)
-  const lastResult = [...state.utterances].reverse().find((u) => u.result)?.result
-  const scriptDone = cursor >= scenario.lines.length
   const currentCard = state.current?.kind === 'card' ? cardById(state.current.id) : undefined
   const currentPerson = state.current?.kind === 'person' ? personCardById(state.current.id) : undefined
   const currentEntry = state.current?.kind === 'result' ? state.results[state.current.id] : undefined
@@ -615,106 +591,71 @@ function MeetingScreen() {
   const showing = Boolean(state.current && (currentCard || currentPerson || entryVisible))
   const trigger = state.current ? state.utterances.find((u) => u.id === state.current!.utteranceId) : undefined
   const triggeredBy = trigger ? { speaker: trigger.speaker, text: trigger.text } : undefined
-  const checks = state.utterances.filter((u) => u.expect !== undefined && (u.result || u.skipped))
-  const passed = checks.filter((u) => expectedId(u) === shownId(u.result)).length
   const live = listening || playing
   const transcript = useMemo(() => toLines(state.utterances), [state.utterances])
-  const runningTasks = pendingTaskKey ? pendingTaskKey.split(',').length : 0
 
   const orbState: OrbState = state.thinking > 0 ? 'thinking' : state.armed ? 'speaking' : live ? 'listening' : 'idle'
-  const status = state.thinking > 0 ? 'Sprawdzam' : state.armed ? `${ASSISTANT_NAME} słucha` : live ? (mode === 'wake' ? `Czekam na „${ASSISTANT_NAME}”` : 'Słucham') : 'Gotowy'
+  const status = state.thinking > 0 ? 'Sprawdzam' : state.armed ? `${ASSISTANT_NAME} słucha` : speech.status === 'connecting' ? 'Łączę' : live ? `Czekam na „${ASSISTANT_NAME}”` : 'Gotowy'
+  const micUnsupported = speech.status === 'unsupported'
+  const toggleMic = () => (listening ? speech.stop() : void speech.start())
 
   return (
     <div className="app-theme flex h-svh flex-col overflow-hidden bg-background text-foreground antialiased">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border/60 px-4">
-        <Link to="/context" className="flex items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
-          <span aria-hidden className="flex size-7 items-center justify-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
-            B
-          </span>
-          <span className="text-sm font-semibold tracking-tight">{ASSISTANT_NAME}</span>
-        </Link>
-        <span aria-hidden className="h-5 w-px bg-border" />
-        <NativeSelect size="sm" aria-label="Scenariusz" value={scenarioId} onChange={(e) => changeScenario(e.target.value)}>
-          {SCENARIOS.map((s) => (
-            <NativeSelectOption key={s.id} value={s.id}>
-              {s.title}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-        <Button size="icon-sm" variant={playing ? 'secondary' : 'ghost'} disabled={scriptDone} onClick={() => setPlaying((p) => !p)} title={playing ? 'Pauza' : 'Odtwarzaj scenariusz'}>
-          {playing ? <PauseIcon /> : <PlayIcon />}
-        </Button>
-        <Button size="icon-sm" variant="ghost" disabled={scriptDone} onClick={stepScenario} title="Następna linia (Spacja)">
-          <SkipForwardIcon />
-        </Button>
-        <Button
-          size="sm"
-          variant={listening ? 'destructive' : 'outline'}
-          disabled={speech.status === 'unsupported'}
-          title={speech.status === 'unsupported' ? 'Przeglądarka nie obsługuje rozpoznawania mowy (użyj Chrome).' : 'Grok Voice Transcribe przez lokalne proxy; bez proxy rozpoznawanie w przeglądarce'}
-          onClick={() => (listening ? speech.stop() : void speech.start())}
-        >
-          {listening ? <MicOffIcon /> : <MicIcon />}
-          {speech.status === 'connecting' ? 'Łączę…' : listening ? 'Stop' : 'Mikrofon'}
-        </Button>
-        <Button size="icon-sm" variant="ghost" onClick={reset} title="Nowe spotkanie (czyści sesję)">
-          <RotateCcwIcon />
-        </Button>
-        <span className="min-w-0 flex-1 truncate pl-2 text-xs text-muted-foreground">
-          {!scriptDone && `Linia ${cursor} z ${scenario.lines.length} · `}
-          <span className="font-mono tabular-nums">{formatDuration(elapsed)}</span>
-          {state.utterances.length > 0 && ` · ${state.utterances.length} wypowiedzi`}
-          {speech.engine && listening && ` · ${speech.engine === 'grok' ? 'Grok Voice Transcribe' : 'mikrofon przeglądarki'}`}
-          {runningTasks > 0 && ` · ${runningTasks} zadanie w tle`}
-          {speech.error && <span className="text-destructive"> · {speech.error}</span>}
-          {debug && sessionId && <span className="font-mono"> · {sessionId}</span>}
-          {debug && checks.length > 0 && (
-            <span className="font-mono">
-              {' '}
-              · test {passed}/{checks.length}
-            </span>
-          )}
-        </span>
-        <ModeToggle mode={mode} onChange={setMode} />
-        <EngineBadge result={lastResult} />
-        <Button variant={debug ? 'secondary' : 'ghost'} size="icon-sm" aria-pressed={debug} title="Transkrypcja i diagnostyka" onClick={() => setDebug((d) => !d)}>
-          <BugIcon />
-        </Button>
-        <Button variant="ghost" size="icon-sm" nativeButton={false} render={<Link to="/" />} title="Dashboard">
-          <LayoutGridIcon />
-        </Button>
-      </header>
 
       <main className="relative min-h-0 flex-1">
+        <Link
+          to="/"
+          className="absolute top-4 left-4 z-30 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 md:left-6"
+        >
+          <ArrowLeftIcon className="size-4" /> Dashboard
+        </Link>
+
         {/* Left: what moved to the background. */}
         <Tray items={trayItems} onOpen={openTrayItem} className="absolute top-1/2 left-4 z-20 w-56 -translate-y-1/2 md:left-6" />
 
         {/* The orb: centre stage when idle, docked at the top while something is shown. */}
         <div
-          aria-hidden={showing}
           className={cn(
             'pointer-events-none absolute left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-6 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
             showing ? 'top-3' : 'top-1/2 -translate-y-1/2',
           )}
         >
-          <NebulaOrb
-            state={orbState}
-            size={showing ? 44 : 220}
-            colorFrom={ORB_COLORS.from}
-            colorTo={ORB_COLORS.to}
-            label={status}
-            className="transition-[width,height] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-          />
+          {/* Clicking the orb starts and stops the microphone. */}
+          <button
+            type="button"
+            onClick={toggleMic}
+            disabled={micUnsupported}
+            aria-pressed={listening}
+            aria-label={listening ? 'Przestań słuchać' : 'Zacznij słuchać'}
+            title={micUnsupported ? 'Przeglądarka nie obsługuje rozpoznawania mowy (użyj Chrome).' : listening ? 'Zatrzymaj mikrofon' : 'Włącz mikrofon'}
+            className={cn(
+              'pointer-events-auto rounded-full outline-none transition-[transform,filter,opacity] duration-700 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-4 focus-visible:ring-offset-background motion-safe:hover:scale-[1.03] motion-safe:active:scale-95 disabled:cursor-default',
+              // Grey while idle, the blue palette comes back as soon as it listens.
+              orbState === 'idle' && 'opacity-75 grayscale',
+            )}
+          >
+            <NebulaOrb
+              state={orbState}
+              size={showing ? 44 : 220}
+              colorFrom={ORB_COLORS.from}
+              colorTo={ORB_COLORS.to}
+              label={status}
+              className="pointer-events-none transition-[width,height] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+            />
+          </button>
           <div className={cn('flex flex-col items-center gap-2 text-center transition-opacity duration-300', showing ? 'opacity-0' : 'opacity-100 delay-200')}>
             <p className={cn('text-xs font-medium tracking-[0.18em] uppercase', state.armed ? 'text-primary' : 'text-muted-foreground')}>{status}</p>
             <h1 className="text-3xl font-semibold tracking-tight text-balance">{state.armed ? 'O co chodzi?' : scenario.title}</h1>
             <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
               {state.armed
                 ? 'Pytaj o ludzi, dane firmy, to spotkanie, internet; poproś o maila, dokument, wykres, raport albo zrzut strony.'
-                : mode === 'wake'
+                : live
                   ? `„${ASSISTANT_NAME}, ile zapłaciliśmy za Pipedrive w sierpniu?” · „${ASSISTANT_NAME}, zrób punkty z ostatniego tematu” · „${ASSISTANT_NAME}, dzięki”.`
-                  : scenario.goal}
+                  : micUnsupported
+                    ? 'Przeglądarka nie obsługuje rozpoznawania mowy. Użyj Chrome.'
+                    : 'Kliknij, żeby zacząć słuchać.'}
             </p>
+            {speech.error && <p className="text-sm text-destructive">{speech.error}</p>}
           </div>
         </div>
 
@@ -743,9 +684,14 @@ function MeetingScreen() {
           <aside className="absolute inset-y-0 right-0 z-20 flex w-[22rem] flex-col border-l border-border bg-background/95 backdrop-blur">
             <div className="flex items-center justify-between border-b border-border px-3 py-2 text-xs font-medium">
               <span>Transkrypcja · diagnostyka</span>
-              <Button size="icon-xs" variant="ghost" onClick={() => setDebug(false)} aria-label="Zamknij">
-                <XIcon />
-              </Button>
+              <span className="flex items-center gap-1">
+                <Button size="icon-xs" variant="ghost" onClick={reset} title="Nowe spotkanie (czyści sesję)">
+                  <RotateCcwIcon />
+                </Button>
+                <Button size="icon-xs" variant="ghost" onClick={() => setDebug(false)} aria-label="Zamknij">
+                  <XIcon />
+                </Button>
+              </span>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
               <TranscriptRail utterances={state.utterances} interim={speech.interim} debug />
@@ -786,49 +732,5 @@ function MeetingScreen() {
         </form>
       </footer>
     </div>
-  )
-}
-
-function ModeToggle({ mode, onChange }: { mode: ListeningMode; onChange: (m: ListeningMode) => void }) {
-  return (
-    <div role="radiogroup" aria-label="Tryb słuchania" className="hidden items-center rounded-lg border border-border p-0.5 md:flex">
-      {(
-        [
-          ['wake', SparklesIcon, 'Na imię'],
-          ['ambient', EarIcon, 'Zawsze'],
-        ] as const
-      ).map(([value, Icon, label]) => (
-        <button
-          key={value}
-          type="button"
-          role="radio"
-          aria-checked={mode === value}
-          onClick={() => onChange(value)}
-          className={cn(
-            'inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-            mode === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Icon className="size-3.5" />
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function EngineBadge({ result }: { result: RelevanceResult | undefined }) {
-  if (!result) return null
-  const jev = result.engine === 'jev'
-  const spec = result.mode === 'command' ? intentById(result.intent.id) : undefined
-  return (
-    <span
-      className={cn('hidden items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium lg:inline-flex', jev ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground')}
-      title={result.error ?? (jev ? `TypeSafe ${result.model ?? 'jev'} przez ${result.via}` : 'Brak klucza — dopasowanie słów kluczowych')}
-    >
-      <span className={cn('size-1.5 rounded-full', jev ? 'bg-primary' : 'bg-muted-foreground')} aria-hidden />
-      {jev ? `Jev · ${result.latencyMs} ms` : 'Tryb offline'}
-      {spec && <span className="text-muted-foreground">· {spec.id}</span>}
-    </span>
   )
 }
