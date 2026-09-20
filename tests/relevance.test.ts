@@ -3,6 +3,7 @@ import { test } from 'node:test'
 
 import { SCENARIOS } from '../src/demo/knowledge.ts'
 import { isDismissal, matchWake } from '../src/lib/wake-word.ts'
+import { findContacts } from '../src/server/directory.ts'
 import { fallback } from '../src/server/relevance.ts'
 import { replayScenario } from '../scripts/replay.ts'
 
@@ -19,6 +20,9 @@ test('offline fallback surfaces the expected card or person for every scripted l
 test('wake word matching', () => {
   assert.deepEqual(matchWake('Bolek, powiedz mi, kim jest Darek Wylon?'), { addressed: true, command: 'kim jest Darek Wylon?', bare: false })
   assert.deepEqual(matchWake('Bolek.'), { addressed: true, command: '', bare: true })
+  assert.equal(matchWake('Bolek, yyy').bare, true)
+  assert.deepEqual(matchWake('Bolek, wyślij'), { addressed: true, command: 'wyślij', bare: false })
+  assert.deepEqual(matchWake('Bolek, schowaj'), { addressed: true, command: 'schowaj', bare: false })
   assert.deepEqual(matchWake('Bolku, kim jest Patrycja'), { addressed: true, command: 'kim jest Patrycja', bare: false })
   assert.equal(matchWake('A za co odpowiada Piotr, Bolek?').command, 'A za co odpowiada Piotr,')
   assert.equal(matchWake('Zero zmian poza jedną pozycją. Bolek, ile płacimy za Pipedrive?').command, 'ile płacimy za Pipedrive?')
@@ -37,13 +41,24 @@ test('dismissal phrases', () => {
   assert.equal(isDismissal(matchWake('Bolek, ile płacimy za Pipedrive?').command), false)
 })
 
-test('offline fallback picks a sensible intent for addressed requests', () => {
+test('offline fallback triages addressed requests', () => {
   const meeting = { title: 't', goal: '', participants: [] }
-  const intentOf = (text: string) => fallback({ meeting, recent: [{ speaker: 'x', text }], mode: 'command' }, 0).intent.id
-  assert.equal(intentOf('zrób punkty z tego, co przed chwilą omawialiśmy'), 'meeting')
-  assert.equal(intentOf('przygotuj krótki raport o wydatkach na narzędzia'), 'report')
-  assert.equal(intentOf('jaki jest dzisiaj kurs euro według NBP?'), 'web')
-  assert.equal(intentOf('ile zapłaciliśmy za Pipedrive w sierpniu?'), 'data')
-  assert.equal(intentOf('kim jest Darek Wylon?'), 'person')
-  assert.equal(intentOf('co to jest amortyzacja?'), 'general')
+  const judge = (text: string, trayItems?: { id: string; title: string }[]) => fallback({ meeting, recent: [{ speaker: 'x', text }], mode: 'command', trayItems }, 0)
+  assert.equal(judge('kim jest Darek Wylon?').intent.id, 'person')
+  assert.equal(judge('schowaj to').intent.id, 'ui_close')
+  assert.equal(judge('odłóż to na później').intent.id, 'ui_background')
+  assert.equal(judge('wyślij').intent.id, 'ui_send')
+  assert.equal(judge('ile zapłaciliśmy za Pipedrive w sierpniu?').intent.id, 'ask')
+  assert.equal(judge('zrób punkty z ostatniego tematu').intent.id, 'ask')
+  const r = judge('otwórz raport o wydatkach', [{ id: 'a', title: 'Notatka: Beta Testing' }, { id: 'b', title: 'Raport: Wydatki na narzędzia' }])
+  assert.equal(r.intent.id, 'ui_open')
+  assert.equal(r.openTarget?.id, 'b')
+})
+
+test('directory matches Polish name forms', () => {
+  assert.equal(findContacts('wyślij maila do Tomasza Kielara')[0]?.email, 'k1eu@bielsko.ai')
+  assert.equal(findContacts('napisz do Michała Staśkiewicza')[0]?.email, 'mikoscz@bielsko.ai')
+  assert.equal(findContacts('do Michala')[0]?.email, 'mikoscz@bielsko.ai')
+  assert.equal(findContacts('Kielarowi też')[0]?.email, 'k1eu@bielsko.ai')
+  assert.equal(findContacts('do Anny Nowak').length, 0)
 })

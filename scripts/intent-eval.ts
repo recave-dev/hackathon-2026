@@ -1,31 +1,38 @@
 import { detectRelevance } from '../src/server/relevance.ts'
 
-/** Sends typical addressed requests through Jev (command mode) and prints the intent it picks. */
-const CASES: [string, string][] = [
-  ['zrób punkty z tego, co przed chwilą omawialiśmy o Beta Testing', 'meeting'],
-  ['podsumuj całe spotkanie', 'meeting'],
-  ['co Michał mówił o kosztach?', 'meeting'],
-  ['przygotuj na następne spotkanie krótki raport o wydatkach na narzędzia', 'report'],
-  ['napisz maila do Alfy z potwierdzeniem terminów', 'report'],
-  ['zrób wykres wydatków na Pipedrive', 'report'],
-  ['jaki jest dzisiaj kurs euro według NBP?', 'web'],
-  ['co nowego u ConnectorCo w tym tygodniu?', 'web'],
-  ['ile zapłaciliśmy za Pipedrive w sierpniu?', 'data'],
-  ['kto zatwierdził Intercom?', 'data'],
-  ['jaki był wynik pilota e-Doręczeń?', 'data'],
+/** Sends typical addressed requests through Jev (command mode) and prints how it triages them. */
+const TRAY = [
+  { id: 'note-1', title: 'Notatka: Beta Testing – umowa' },
+  { id: 'rep-1', title: 'Raport: Wydatki na narzędzia' },
+  { id: 'chart-1', title: 'Wykres: wydatki na Pipedrive' },
+]
+const CASES: [string, string, string?][] = [
   ['kim jest Darek Wylon?', 'person'],
   ['nad czym pracuje Patrycja?', 'person'],
-  ['co to są e-Doręczenia, w dwóch zdaniach?', 'general'],
-  ['ile to jest 36 tysięcy razy cztery?', 'general'],
-  ['przetłumacz "umowa ramowa" na angielski', 'general'],
+  ['schowaj to', 'ui_close'],
+  ['dzięki, to wszystko', 'ui_close'],
+  ['odłóż to na później, wrócimy do tego', 'ui_background'],
+  ['przenieś to do tła', 'ui_background'],
+  ['otwórz ten raport o wydatkach', 'ui_open', 'rep-1'],
+  ['pokaż jeszcze raz tę notatkę', 'ui_open', 'note-1'],
+  ['wróć do wykresu', 'ui_open', 'chart-1'],
+  ['ok, wyślij', 'ui_send'],
+  ['możesz to wysłać', 'ui_send'],
+  ['ile zapłaciliśmy za Pipedrive w sierpniu?', 'ask'],
+  ['zrób punkty z tego, co omawialiśmy', 'ask'],
+  ['przygotuj raport o wydatkach na narzędzia', 'ask'],
+  ['jaki jest kurs euro?', 'ask'],
+  ['pokaż, co mamy na landingu', 'ask'],
+  ['napisz maila do Alfy z potwierdzeniem terminów', 'ask'],
+  ['co to są e-Doręczenia?', 'ask'],
 ]
 
 let ok = 0
-for (const [text, want] of CASES) {
-  const r = await detectRelevance({ meeting: { title: 'Zarząd', goal: '', participants: [] }, recent: [{ speaker: 'Sala', text }], mode: 'command' })
+for (const [text, want, target] of CASES) {
+  const r = await detectRelevance({ meeting: { title: 'Zarząd', goal: '', participants: [] }, recent: [{ speaker: 'Sala', text }], mode: 'command', trayItems: TRAY })
   const got = r.action === 'show' && r.target === 'person' ? 'person' : r.intent.id
-  const hit = got === want
+  const hit = got === want && (!target || r.openTarget?.id === target)
   if (hit) ok++
-  console.log(`${hit ? ' ok ' : ' XX '} ${String(r.latencyMs).padStart(4)}ms ${got.padEnd(8)} ${r.intent.confidence.toFixed(2)}  want ${want.padEnd(8)} "${text}"`)
+  console.log(`${hit ? ' ok ' : ' XX '} ${String(r.latencyMs).padStart(4)}ms ${got.padEnd(13)} ${r.intent.confidence.toFixed(2)}${r.openTarget ? `  open=${r.openTarget.id ?? 'none'} ${r.openTarget.confidence.toFixed(2)}` : ''}  want ${want}${target ? `/${target}` : ''}  "${text}"`)
 }
 console.log(`\n${ok}/${CASES.length}`)

@@ -25,6 +25,8 @@ const DISMISS = /^(?:ok(?:ej)?[,.!\s]*|no[,.!\s]*|dobra[,.!\s]*|to\s+)?(?:dzi[e�
 /** "Bolek, dzięki" and friends: hide what is on screen instead of looking something up. */
 export const isDismissal = (command: string): boolean => DISMISS.test(command.trim())
 
+const HESITATION = /^(?:y+|e+|hmm+|ehm+|eee|no|tak|więc|to|słuchaj|proszę|czekaj|moment)[.,!?…\s]*$/iu
+
 const FILLER = /^(?:[\s,.!?;:—-]|powiedz(?: mi)?|pokaż(?: mi)?|proszę|tell me|show me)+/i
 
 export function matchWake(text: string): WakeMatch {
@@ -34,7 +36,8 @@ export function matchWake(text: string): WakeMatch {
   const after = text.slice(m.index + m[0].length).replace(FILLER, '').trim()
   // "…, Bolku?" at the end: the request is what came before.
   const command = after.length >= 3 ? after : before
-  // A single word after the name is usually a hesitation ("Bolek, ehm"); "Bolek, dzięki" is a command.
-  const bare = command.split(/\s+/).filter(Boolean).length < 2 && !isDismissal(command)
+  // Only the name, or the name plus a hesitation ("Bolek, ehm…"): the request comes next.
+  // A real one-word command ("wyślij", "dzięki", "schowaj") is not bare.
+  const bare = command.length === 0 || HESITATION.test(command)
   return { addressed: true, command: bare ? '' : command, bare }
 }

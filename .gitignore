@@ -16,3 +16,7 @@ todos.json
 !knowledge/synthetic/demo-v3-2025-11-19.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Bolek runtime data: sessions, screenshots
+.data/
+public/shots/

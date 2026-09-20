@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { KnowledgeGraph, summarizeSpend } from '../graph/index.ts'
 import type { GraphNode, SourceChunk } from '../graph/index.ts'
 import { ASSISTANT_NAME } from '../lib/wake-word.ts'
+import { ensureDirectory } from './directory.ts'
 import { chatJson, openrouterKey } from './llm.ts'
 
 /**
@@ -47,11 +48,12 @@ const QUOTE_CHARS = 700
 let graph: KnowledgeGraph | undefined
 let digestCache: { text: string; nodes: number; edges: number } | undefined
 
-function openGraph(): KnowledgeGraph {
+export function openGraph(): KnowledgeGraph {
   if (graph) return graph
   const path = resolve(process.cwd(), GRAPH_PATH)
   if (!existsSync(path)) throw new Error(`Graph database not found at ${path}`)
   graph = new KnowledgeGraph(path)
+  ensureDirectory(graph)
   return graph
 }
 
@@ -61,7 +63,7 @@ const attrs = (n: GraphNode): string => {
 }
 
 /** Every node and edge, compact, grouped by kind. Cached for the life of the process. */
-function graphDigest(g: KnowledgeGraph): { text: string; nodes: number; edges: number } {
+export function graphDigest(g: KnowledgeGraph): { text: string; nodes: number; edges: number } {
   if (digestCache) return digestCache
   const { nodes, edges } = g.getGraphSnapshot()
   const byKind = new Map<string, GraphNode[]>()
@@ -83,7 +85,7 @@ function graphDigest(g: KnowledgeGraph): { text: string; nodes: number; edges: n
 }
 
 /** Deterministic arithmetic for every metric, so the model quotes totals instead of adding. */
-function spendTotals(g: KnowledgeGraph): string {
+export function spendTotals(g: KnowledgeGraph): string {
   const metrics = g.getGraphSnapshot().nodes.filter((n) => n.kind === 'metric')
   const lines: string[] = []
   for (const m of metrics) {
@@ -106,7 +108,7 @@ function spendTotals(g: KnowledgeGraph): string {
   return lines.length ? `## precomputed totals (trust these over your own arithmetic)\n${lines.join('\n')}` : ''
 }
 
-function retrieveChunks(g: KnowledgeGraph, question: string, recent: string[]): SourceChunk[] {
+export function retrieveChunks(g: KnowledgeGraph, question: string, recent: string[]): SourceChunk[] {
   const seen = new Map<string, SourceChunk>()
   const add = (c: SourceChunk) => {
     if (!seen.has(c.id) && seen.size < MAX_CHUNKS) seen.set(c.id, c)

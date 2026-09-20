@@ -235,18 +235,21 @@ The repository includes two shared graph databases, `knowledge/synthetic/demo-v3
 - **Na imię „Bolek”** (default): the room talks freely; Bolek reacts only when addressed. Either inline, „Bolek, kim jest Darek Wylon?”, or a bare „Bolek.” which arms it for the next sentence. Wake-word matching is local (`src/lib/wake-word.ts`, tolerant of recogniser misspellings); the request, with the name stripped, goes to Jev in `command` mode and resolves to a person or a topic.
 - **Zawsze**: every utterance is judged; a card appears when someone asks about a cost, an owner, a deadline or a result, and a topic only mentioned lands in the "Wspomniano" tray.
 
-Anything else said to Bolek goes through an **intent router and an action layer**. Jev's command-mode call includes an `intent` choice over the specs in `src/lib/intents.ts`; `src/server/actions.ts` runs the matching action and the screen renders its result:
+Anything else said to Bolek is handled by **Bolek the agent** (`src/server/agent.ts`): a tool-use loop over Claude Sonnet 5 via OpenRouter (`AGENT_MODEL`). Jev's command-mode call still triages first (`src/lib/intents.ts`): a person lookup shows the profile card, screen commands (`ui_close`, `ui_background`, `ui_open` with the tray item resolved by Jev, `ui_send`) act locally in under half a second, and everything else goes to the agent. The agent reads the **meeting session** (`src/server/session.ts`: every transcript line, one JSON file per meeting under `.data/sessions/`, plus a rolling context digest refreshed by Haiku every few lines, `src/server/context.ts`) and decides which tools to call:
 
-| Intent | What runs | Screen |
-| --- | --- | --- |
-| `person` | none; Jev's person match | profile card |
-| `data` | `src/server/graph-answer.ts`: every node and edge of the SQLite graph, precomputed spend totals per metric and month, and the best full-text and graph-neighbourhood passages go into one Claude Haiku 4.5 call via OpenRouter | answer card with headline, sentences, bullets and the quoted `[Cn]` passages; "brak w danych" when the graph has nothing |
-| `meeting` | the whole session transcript (with speakers, times and line ids) goes to the model, which picks the scope itself ("ostatni temat", "całe spotkanie", a named topic) | note card: bullets, decisions, action items with owners, open questions, and the turns it read |
-| `general` | plain model call, last few turns as context | answer card, "Wiedza ogólna" |
-| `web` | OpenRouter's `:online` variant of the same model; the question travels without meeting context so the search is not steered by the agenda | answer card, "Z internetu", with the pages read |
-| `report` | **background task**: graph answer + transcript → a Markdown memo (250–500 words); the server keeps the task in memory, the screen polls `getTask` every 2 s | a small card in the left tray with a spinner, highlighted "gotowe" when it lands (or the document itself if nothing else is on screen) |
+| Tool | What it does |
+| --- | --- |
+| `find_contact` | a colleague's email by name in any Polish case; the team directory (`src/server/directory.ts`) is seeded into the graph as person entities with an `email` attribute |
+| `company_knowledge`, `list_entities`, `get_entity` | search the SQLite company graph (entity label/alias match + full-text passages + precomputed spend totals), list a kind, walk one entity's relations and evidence |
+| `search_web` | OpenRouter's `:online` search, summary with page sources |
+| `page_screenshot` | headless Chrome (puppeteer-core, the installed Google Chrome) opens a URL and the PNG is written to `public/shots/` and shown from `/shots/<file>`; with no `LANDING_URL` Bolek asks for the address |
+| `draft_email` | prepares a mail from Bolek's mailbox (`SMTP_*`); the room confirms with „Bolek, wyślij" or the button, then `sendDraft` sends it over SMTP and a confirmation card (recipient, subject, time, collapsible body) takes the screen |
+| `create_document` | Markdown document kept in the session, rendered on screen |
+| `meeting_notes` | bullets, decisions, action items, open questions from the transcript |
+| `chart` | bar or line chart (Recharts) from numbers the agent already has |
+| `write_report` | background task; the report lands in the tray when done |
 
-Fast actions take 3–5 s; the report about 20–30 s and does not block other questions. Everything that leaves the main screen (a background task, or a result replaced by a newer question) sits as a small card in the **tray on the left** (`src/components/meeting/tray.tsx`): spinner while running, a highlighted "gotowe" badge when finished and not yet opened, click to bring it back. The transcript, results, scenario position and running tasks persist in `localStorage`, so a reload mid-meeting keeps the conversation. Adding an action means one entry in `src/lib/intents.ts` (its English criterion is what Jev sees) and one branch in `runAction`. `npm run intent-eval` (`scripts/intent-eval.ts`) sends typical requests through Jev and prints the intent it picks (last run 15/16; "co nowego u ConnectorCo" went to `data`, which is defensible since ConnectorCo is in the graph).
+The agent runs as a job (`askAgent` returns a job id, `pollAgent` streams its current activity and finished steps to the loading card every 700 ms). Results carry attachments (screenshot, chart, document, email draft, note, task, citations) that the agent card renders, and a collapsible list of the tool calls with timings. Everything that leaves the main screen sits in the **tray on the left** (`src/components/meeting/tray.tsx`): spinner while running, a highlighted "gotowe" badge when finished and not yet opened, click or „Bolek, otwórz raport" to bring it back. Adding a tool is one entry in `TOOLS` in `src/server/tools.ts`: schema, description, handler. `npm run agent:eval` drives the agent from the terminal; `npm run intent:eval` checks Jev's triage (last run 18/18).
 
 Cards are of two kinds: **people** (`src/demo/people.ts`, hardcoded profiles for Darek Wylon, Piotr Zieliński and Patrycja Sowa: role, what they own, what they are on now, recent activity, practical notes) and **topics** (`KNOWLEDGE_CARDS` in `src/demo/knowledge.ts`): figures first, the answer from the asked angle, then who is responsible, what happened before, and the sources.
 

@@ -2,9 +2,9 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { BugIcon, EarIcon, LayoutGridIcon, MicIcon, MicOffIcon, PauseIcon, PlayIcon, RotateCcwIcon, SendIcon, SkipForwardIcon, SparklesIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react'
 
-import { AnswerCardView, AnswerErrorView, AnswerLoadingView } from '@/components/meeting/answer-card'
+import { AgentCardView, AgentErrorView, AgentLoadingView } from '@/components/meeting/agent-card'
+import { EmailSentView } from '@/components/meeting/email-sent-card'
 import { KnowledgeCardView } from '@/components/meeting/knowledge-card'
-import { NoteCardView } from '@/components/meeting/note-card'
 import { PersonCardView } from '@/components/meeting/person-card'
 import { ReportCardView } from '@/components/meeting/report-card'
 import { TranscriptRail, expectedId, shownId, type Utterance } from '@/components/meeting/transcript-rail'
@@ -15,21 +15,34 @@ import { formatDuration } from '@/demo/format'
 import { FACET_LABEL, SCENARIOS, cardById, type Facet, type ListeningMode } from '@/demo/knowledge'
 import { personCardById } from '@/demo/people'
 import { PEOPLE } from '@/demo/seed'
-import { intentById, type Intent } from '@/lib/intents'
+import { intentById } from '@/lib/intents'
 import { useTranscription } from '@/lib/transcription'
 import { cn } from '@/lib/utils'
 import { ASSISTANT_NAME, isDismissal, matchWake } from '@/lib/wake-word'
 import type { OrbState } from '@/registry/lib/orb-state'
 import { NebulaOrb } from '@/registry/orbe/nebula-orb/nebula-orb'
 import { ORB_COLORS } from '@/routes/app/index'
-import { getTask, judgeUtterance, runAction, type ActionResult, type RelevanceResult, type TaskResult, type TranscriptLine } from '@/server/meeting-assist'
+import {
+  askAgent,
+  getTask,
+  judgeUtterance,
+  pollAgent,
+  sendDraft,
+  syncSession,
+  type AgentResult,
+  type AgentStep,
+  type EmailDraft,
+  type RelevanceResult,
+  type SessionLine,
+  type TaskResult,
+} from '@/server/meeting-assist'
 
 export const Route = createFileRoute('/meeting')({
   head: () => ({ meta: [{ title: `${ASSISTANT_NAME} · Spotkanie na żywo` }] }),
   component: MeetingScreen,
 })
 
-/** What is on screen: a topic card, a person, or the result of a request (keyed by the utterance that asked). */
+/** What is on screen: a topic card, a person, or a result keyed by the utterance (or task) that produced it. */
 interface Shown {
   kind: 'card' | 'person' | 'result'
   id: string
@@ -38,22 +51,32 @@ interface Shown {
   seq: number
 }
 
+/** A sent email, shown as its own confirmation card. */
+interface SentResult {
+  kind: 'sent'
+  draft: EmailDraft
+}
+
 type ResultEntry =
-  | { status: 'loading'; question: string; intent?: Intent }
-  | { status: 'done'; question: string; intent: Intent; result: ActionResult }
-  | { status: 'error'; question: string; intent?: Intent; error: string }
+  | { status: 'loading'; question: string; activity?: string; steps: AgentStep[] }
+  | { status: 'done'; question: string; result: AgentResult | TaskResult | SentResult }
+  | { status: 'error'; question: string; error: string }
 
 interface MeetingState {
   utterances: Utterance[]
   current: Shown | null
   /** What was on screen, latest first, one entry per target. */
   history: Shown[]
-  /** Results of addressed requests, keyed by utterance id. */
+  /** Results of addressed requests (and background tasks), keyed by utterance id or `task:<id>`. */
   results: Record<string, ResultEntry>
-  /** Background tasks still running: task id → utterance id. */
+  /** Background report tasks still running: task id → result key. */
   pendingTasks: Record<string, string>
-  /** Finished background tasks the room has not looked at yet. */
+  /** Agent jobs in flight: job id → utterance id. */
+  pendingJobs: Record<string, string>
+  /** Finished background work the room has not looked at yet. */
   fresh: string[]
+  /** Email drafts by id, with their send status. */
+  drafts: Record<string, EmailDraft>
   seq: number
   /** Someone said only the name: the next utterance is the request. */
   armed: boolean
@@ -64,72 +87,97 @@ interface MeetingState {
 type MeetingAction =
   | { type: 'say'; utterance: Utterance }
   | { type: 'ask'; utteranceId: string; question: string; seq: number }
-  | { type: 'intent'; utteranceId: string; intent: Intent }
-  | { type: 'resolved'; utteranceId: string; result: ActionResult }
+  | { type: 'job'; utteranceId: string; jobId: string }
+  | { type: 'progress'; utteranceId: string; activity: string; steps: AgentStep[] }
+  | { type: 'resolved'; utteranceId: string; result: AgentResult }
   | { type: 'failed'; utteranceId: string; error: string }
   | { type: 'task'; task: TaskResult }
+  | { type: 'draft'; draft: EmailDraft }
   | { type: 'judged'; utteranceId: string; seq: number; result: RelevanceResult }
   | { type: 'pin'; kind: 'card' | 'person'; id: string; facet?: Facet }
-  | { type: 'show'; utteranceId: string }
+  | { type: 'show'; id: string }
   | { type: 'arm'; armed: boolean }
   | { type: 'dismiss' }
-  | { type: 'restore'; state: Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks'> }
+  | { type: 'restore'; state: Persisted }
   | { type: 'reset' }
 
-const EMPTY: MeetingState = { utterances: [], current: null, history: [], results: {}, pendingTasks: {}, fresh: [], seq: 0, armed: false, thinking: 0 }
+const EMPTY: MeetingState = { utterances: [], current: null, history: [], results: {}, pendingTasks: {}, pendingJobs: {}, fresh: [], drafts: {}, seq: 0, armed: false, thinking: 0 }
 
 const sameTarget = (a: Shown, b: Shown) => a.kind === b.kind && a.id === b.id && (a.kind !== 'card' || a.facet === b.facet)
 
 function pushHistory(history: Shown[], next: Shown): Shown[] {
-  return [next, ...history.filter((h) => !sameTarget(h, next))].slice(0, 10)
+  return [next, ...history.filter((h) => !sameTarget(h, next))].slice(0, 12)
 }
 
 function reducer(state: MeetingState, action: MeetingAction): MeetingState {
   switch (action.type) {
     case 'say': {
       const pending = !action.utterance.skipped
-      return { ...state, utterances: [...state.utterances, { ...action.utterance, pending }].slice(-200), thinking: state.thinking + (pending ? 1 : 0) }
+      return { ...state, utterances: [...state.utterances, { ...action.utterance, pending }].slice(-300), thinking: state.thinking + (pending ? 1 : 0) }
     }
     case 'ask': {
-      // The result card appears at once and fills in when the action lands.
+      // The result card appears at once and fills in as the agent works.
       const current: Shown = { kind: 'result', id: action.utteranceId, facet: 'general', utteranceId: action.utteranceId, seq: action.seq }
-      return { ...state, current, history: pushHistory(state.history, current), results: { ...state.results, [action.utteranceId]: { status: 'loading', question: action.question } }, thinking: state.thinking + 1 }
+      return { ...state, current, history: pushHistory(state.history, current), results: { ...state.results, [action.utteranceId]: { status: 'loading', question: action.question, steps: [] } }, thinking: state.thinking + 1 }
     }
-    case 'intent': {
+    case 'job':
+      return { ...state, pendingJobs: { ...state.pendingJobs, [action.jobId]: action.utteranceId } }
+    case 'progress': {
       const entry = state.results[action.utteranceId]
       if (!entry || entry.status !== 'loading') return state
-      return { ...state, results: { ...state.results, [action.utteranceId]: { ...entry, intent: action.intent } } }
+      return { ...state, results: { ...state.results, [action.utteranceId]: { ...entry, activity: action.activity, steps: action.steps } } }
     }
     case 'resolved': {
       const entry = state.results[action.utteranceId]
       const question = entry?.question ?? action.result.question
-      const results = { ...state.results, [action.utteranceId]: { status: 'done' as const, question, intent: action.result.intent, result: action.result } }
-      const pendingTasks = action.result.kind === 'task' && (action.result.status === 'queued' || action.result.status === 'running') ? { ...state.pendingTasks, [action.result.taskId]: action.utteranceId } : state.pendingTasks
-      return { ...state, results, pendingTasks, thinking: Math.max(0, state.thinking - 1) }
+      let { results, history, pendingTasks, drafts } = state
+      results = { ...results, [action.utteranceId]: { status: 'done', question, result: action.result } }
+      // Background reports become their own tray entries; email drafts get tracked for sending.
+      for (const a of action.result.attachments) {
+        if (a.type === 'task') {
+          const key = `task:${a.task.taskId}`
+          results = { ...results, [key]: { status: 'done', question: a.task.question, result: a.task } }
+          pendingTasks = { ...pendingTasks, [a.task.taskId]: key }
+          history = pushHistory(history, { kind: 'result', id: key, facet: 'general', utteranceId: action.utteranceId, seq: -1 })
+        } else if (a.type === 'email_draft') {
+          drafts = { ...drafts, [a.id]: { id: a.id, to: a.to, subject: a.subject, body: a.body, createdAt: Date.now(), status: 'draft' } }
+        }
+      }
+      const pendingJobs = Object.fromEntries(Object.entries(state.pendingJobs).filter(([, u]) => u !== action.utteranceId))
+      return { ...state, results, history, pendingTasks, pendingJobs, drafts, thinking: Math.max(0, state.thinking - 1) }
     }
     case 'failed': {
       const entry = state.results[action.utteranceId]
+      const pendingJobs = Object.fromEntries(Object.entries(state.pendingJobs).filter(([, u]) => u !== action.utteranceId))
       return {
         ...state,
-        results: { ...state.results, [action.utteranceId]: { status: 'error', question: entry?.question ?? '', intent: entry?.intent, error: action.error } },
+        results: { ...state.results, [action.utteranceId]: { status: 'error', question: entry?.question ?? '', error: action.error } },
+        pendingJobs,
         thinking: Math.max(0, state.thinking - 1),
       }
     }
     case 'task': {
-      const utteranceId = state.pendingTasks[action.task.taskId]
-      if (!utteranceId) return state
-      const entry = state.results[utteranceId]
-      const results = { ...state.results, [utteranceId]: { status: 'done' as const, question: entry?.question ?? action.task.question, intent: action.task.intent, result: action.task } }
+      const key = state.pendingTasks[action.task.taskId]
+      if (!key) return state
+      const entry = state.results[key]
+      const results = { ...state.results, [key]: { status: 'done' as const, question: entry?.question ?? action.task.question, result: action.task } }
       const finished = action.task.status === 'done' || action.task.status === 'failed'
       if (!finished) return { ...state, results }
       const { [action.task.taskId]: _, ...pendingTasks } = state.pendingTasks
-      const onScreen = state.current?.kind === 'result' && state.current.id === utteranceId
+      const onScreen = state.current?.kind === 'result' && state.current.id === key
       if (!state.current) {
-        // Nothing else on screen: show the finished document right away.
-        return { ...state, results, pendingTasks, current: { kind: 'result', id: utteranceId, facet: 'general', utteranceId, seq: state.seq } }
+        return { ...state, results, pendingTasks, current: { kind: 'result', id: key, facet: 'general', utteranceId: '', seq: state.seq } }
       }
-      // Otherwise it waits in the tray, highlighted until someone opens it.
-      return { ...state, results, pendingTasks, fresh: onScreen ? state.fresh : [...state.fresh.filter((id) => id !== utteranceId), utteranceId] }
+      return { ...state, results, pendingTasks, fresh: onScreen ? state.fresh : [...state.fresh.filter((id) => id !== key), key] }
+    }
+    case 'draft': {
+      const drafts = { ...state.drafts, [action.draft.id]: action.draft }
+      if (action.draft.status !== 'sent') return { ...state, drafts }
+      // Sent: a confirmation card takes the screen; the draft itself stays reachable in the tray.
+      const key = `sent:${action.draft.id}`
+      const seq = state.seq + 1
+      const current: Shown = { kind: 'result', id: key, facet: 'general', utteranceId: '', seq }
+      return { ...state, drafts, seq, current, history: pushHistory(state.history, current), results: { ...state.results, [key]: { status: 'done', question: `Mail do ${action.draft.to.join(', ')}`, result: { kind: 'sent', draft: action.draft } } } }
     }
     case 'judged': {
       const utterances = state.utterances.map((u) => (u.id === action.utteranceId ? { ...u, pending: false, result: action.result } : u))
@@ -137,7 +185,7 @@ function reducer(state: MeetingState, action: MeetingAction): MeetingState {
       let { current, history } = state
       const id = shownId(r)
       if (r.action === 'show' && id && r.target === 'person' && action.seq >= (current?.seq ?? -1)) {
-        // A person beats the open answer: the profile card is the better screen for "who is X".
+        // A person beats the agent: the profile card is the better screen for "who is X".
         current = { kind: 'person', id, facet: 'general', utteranceId: action.utteranceId, seq: action.seq }
         history = pushHistory(history.filter((h) => !(h.kind === 'result' && h.id === action.utteranceId)), current)
       } else if (r.mode === 'ambient' && r.action === 'show' && id && r.target && action.seq > (current?.seq ?? -1)) {
@@ -154,8 +202,9 @@ function reducer(state: MeetingState, action: MeetingAction): MeetingState {
     }
     case 'show': {
       const seq = state.seq + 1
-      const current: Shown = { kind: 'result', id: action.utteranceId, facet: 'general', utteranceId: action.utteranceId, seq }
-      return { ...state, seq, current, history: pushHistory(state.history, current), fresh: state.fresh.filter((id) => id !== action.utteranceId) }
+      const previous = state.history.find((h) => h.kind === 'result' && h.id === action.id)
+      const current: Shown = { kind: 'result', id: action.id, facet: 'general', utteranceId: previous?.utteranceId ?? action.id, seq }
+      return { ...state, seq, current, history: pushHistory(state.history, current), fresh: state.fresh.filter((id) => id !== action.id) }
     }
     case 'arm':
       return { ...state, armed: action.armed }
@@ -168,13 +217,16 @@ function reducer(state: MeetingState, action: MeetingAction): MeetingState {
   }
 }
 
-const STORAGE_KEY = 'bolek-meeting-v1'
+const STORAGE_KEY = 'bolek-meeting-v2'
 
-interface Persisted extends Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks'> {
+interface Persisted extends Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks' | 'drafts'> {
+  sessionId: string
   scenarioId: string
   cursor: number
   mode: ListeningMode
 }
+
+const newSessionId = (): string => `meet-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 6)}`
 
 function loadPersisted(): Persisted | null {
   try {
@@ -182,15 +234,17 @@ function loadPersisted(): Persisted | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<Persisted>
     if (!Array.isArray(parsed.utterances)) return null
-    // Anything still loading when the page went away is gone for good; running background tasks are polled again.
+    // Anything still loading when the page went away is gone for good; running report tasks are polled again.
     const results: MeetingState['results'] = {}
     for (const [k, v] of Object.entries(parsed.results ?? {})) if (v.status === 'done') results[k] = v
     return {
       utterances: parsed.utterances.map((u) => ({ ...u, pending: false })),
       results,
-      history: parsed.history ?? [],
+      history: (parsed.history ?? []).filter((h) => h.kind !== 'result' || results[h.id]),
       seq: parsed.seq ?? 0,
       pendingTasks: parsed.pendingTasks ?? {},
+      drafts: parsed.drafts ?? {},
+      sessionId: parsed.sessionId ?? newSessionId(),
       scenarioId: parsed.scenarioId ?? SCENARIOS[0]!.id,
       cursor: parsed.cursor ?? 0,
       mode: parsed.mode ?? 'wake',
@@ -216,16 +270,17 @@ const EMPTY_RESULT = (mode: RelevanceResult['mode'], error?: string): RelevanceR
   topic: { id: null, confidence: 0, probabilities: {} },
   person: { id: null, confidence: 0 },
   facet: { id: 'general', confidence: 0 },
-  intent: { id: 'general', confidence: 0 },
+  intent: { id: 'ask', confidence: 0 },
   action: 'none',
   target: null,
   error,
 })
 
-const toTranscript = (utterances: Utterance[]): TranscriptLine[] => utterances.map((u) => ({ id: u.id, speaker: u.speaker, text: u.text, at: u.at, addressed: u.addressed }))
+const toLines = (utterances: Utterance[]): SessionLine[] => utterances.map((u) => ({ id: u.id, speaker: u.speaker, text: u.text, at: u.at, addressed: u.addressed }))
 
 function MeetingScreen() {
   const [state, dispatch] = useReducer(reducer, EMPTY)
+  const [sessionId, setSessionId] = useState<string>('')
   const [scenarioId, setScenarioId] = useState(SCENARIOS[0]!.id)
   const scenario = useMemo(() => SCENARIOS.find((s) => s.id === scenarioId) ?? SCENARIOS[0]!, [scenarioId])
   const [mode, setMode] = useState<ListeningMode>(scenario.mode)
@@ -235,9 +290,11 @@ function MeetingScreen() {
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [typed, setTyped] = useState('')
+  const [sendingDraft, setSendingDraft] = useState<string | null>(null)
   const seq = useRef(0)
   const stateRef = useRef(state)
   stateRef.current = state
+  const synced = useRef(0)
 
   // Restore the meeting after a reload, then keep saving it.
   const restored = useRef(false)
@@ -246,28 +303,101 @@ function MeetingScreen() {
     restored.current = true
     const saved = loadPersisted()
     if (saved) {
-      const { scenarioId: sid, cursor: c, mode: m, ...rest } = saved
-      dispatch({ type: 'restore', state: rest })
-      seq.current = rest.seq + rest.utterances.length
-      if (SCENARIOS.some((s) => s.id === sid)) setScenarioId(sid)
-      setCursor(c)
-      setMode(m)
+      dispatch({ type: 'restore', state: saved })
+      seq.current = saved.seq + saved.utterances.length
+      if (SCENARIOS.some((s) => s.id === saved.scenarioId)) setScenarioId(saved.scenarioId)
+      setCursor(saved.cursor)
+      setMode(saved.mode)
+      setSessionId(saved.sessionId)
+    } else {
+      setSessionId(newSessionId())
     }
   }, [])
   useEffect(() => {
-    if (!restored.current) return
+    if (!restored.current || !sessionId) return
     try {
-      const { utterances, results, history, seq: s, pendingTasks } = state
-      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, scenarioId, cursor, mode }
+      const { utterances, results, history, seq: s, pendingTasks, drafts } = state
+      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, drafts, sessionId, scenarioId, cursor, mode }
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
     } catch {
       /* storage full or blocked: the meeting simply is not persisted */
     }
-  }, [state, scenarioId, cursor, mode])
+  }, [state, sessionId, scenarioId, cursor, mode])
 
   const meetingInfo = useMemo(
     () => ({ title: scenario.title, goal: scenario.goal, participants: scenario.participantIds.map(speakerLabel) }),
     [scenario],
+  )
+
+  // Every line the room says flows into the server-side session (the agent's context).
+  const pushToSession = useCallback(
+    (extra?: SessionLine[]) => {
+      if (!sessionId) return
+      const all = toLines(stateRef.current.utterances)
+      const batch = [...all.slice(synced.current), ...(extra ?? [])]
+      if (batch.length === 0) return
+      const upTo = all.length
+      syncSession({ data: { sessionId, title: meetingInfo.title, lines: batch } })
+        .then(() => {
+          synced.current = Math.max(synced.current, upTo)
+        })
+        .catch(() => {})
+    },
+    [sessionId, meetingInfo.title],
+  )
+
+  const trayItems = useMemo((): TrayItem[] => {
+    return state.history
+      .filter((h) => !(state.current && sameTarget(state.current, h)))
+      .slice(0, 6)
+      .flatMap((h): TrayItem[] => {
+        const key = `${h.kind}-${h.id}-${h.facet}`
+        if (h.kind === 'person') {
+          const p = personCardById(h.id)
+          return p ? [{ key, kind: 'person', title: p.name, subtitle: p.role, status: 'done' }] : []
+        }
+        if (h.kind === 'card') {
+          const c = cardById(h.id)
+          return c ? [{ key, kind: 'card', title: c.title, subtitle: FACET_LABEL[h.facet], status: 'done' }] : []
+        }
+        const e = state.results[h.id]
+        if (!e) return []
+        const fresh = state.fresh.includes(h.id)
+        if (e.status === 'loading') return [{ key, kind: 'answer', title: e.question, subtitle: e.activity, status: 'running' }]
+        if (e.status === 'error') return e.error === 'person' || e.error === 'ui' ? [] : [{ key, kind: 'answer', title: e.question, subtitle: 'nie udało się', status: 'done' }]
+        const r = e.result
+        if (r.kind === 'sent') return [{ key, kind: 'email', title: `Wysłano: ${r.draft.subject}`, subtitle: r.draft.to.join(', '), status: 'done' }]
+        if (r.kind === 'task') {
+          const running = r.status === 'queued' || r.status === 'running'
+          return [{ key, kind: 'report', title: r.title ?? r.question, subtitle: running ? undefined : r.question, status: running ? 'running' : fresh ? 'fresh' : 'done', seconds: running ? Math.round((Date.now() - r.startedAt) / 1000) : undefined }]
+        }
+        const first = r.attachments.find((a) => a.type !== 'citations')
+        const kind: TrayItem['kind'] =
+          first?.type === 'screenshot' ? 'screenshot' : first?.type === 'chart' ? 'chart' : first?.type === 'document' ? 'document' : first?.type === 'email_draft' ? 'email' : first?.type === 'note' ? 'note' : r.steps.some((s) => s.tool === 'search_web') ? 'web' : r.steps.some((s) => s.tool === 'company_knowledge' || s.tool === 'get_entity' || s.tool === 'list_entities') ? 'data' : 'answer'
+        const title = first?.type === 'document' ? first.title : first?.type === 'note' ? first.note.title : first?.type === 'email_draft' ? first.subject : r.headline || r.question
+        return [{ key, kind, title, subtitle: title === r.question ? undefined : r.question, status: fresh ? 'fresh' : 'done' }]
+      })
+  }, [state.history, state.current, state.results, state.fresh])
+
+  const openTrayItem = useCallback((item: TrayItem) => {
+    const h = stateRef.current.history.find((x) => `${x.kind}-${x.id}-${x.facet}` === item.key)
+    if (!h) return
+    if (h.kind === 'result') dispatch({ type: 'show', id: h.id })
+    else dispatch({ type: 'pin', kind: h.kind, id: h.id, facet: h.facet })
+  }, [])
+
+  const send = useCallback(
+    (draftId?: string) => {
+      if (!sessionId) return
+      setSendingDraft(draftId ?? 'latest')
+      sendDraft({ data: { sessionId, draftId } })
+        .then((draft) => {
+          if (draft) dispatch({ type: 'draft', draft })
+        })
+        .catch(() => {})
+        .finally(() => setSendingDraft(null))
+    },
+    [sessionId],
   )
 
   const say = useCallback(
@@ -281,7 +411,6 @@ function MeetingScreen() {
       const armed = stateRef.current.armed
       const addressed = wake.addressed || armed
       if (wake.addressed && wake.bare) {
-        // The name on its own: wait for the request.
         dispatch({ type: 'say', utterance: { ...base, addressed: true, skipped: true } })
         dispatch({ type: 'arm', armed: true })
         return
@@ -290,7 +419,6 @@ function MeetingScreen() {
 
       const command = wake.addressed ? wake.command || text : text
       if (addressed && isDismissal(command)) {
-        // "Bolek, dzięki": hide the card, orb returns to the centre. No model call.
         dispatch({ type: 'say', utterance: { ...base, addressed: true, skipped: true, dismissed: true } })
         dispatch({ type: 'dismiss' })
         return
@@ -298,6 +426,8 @@ function MeetingScreen() {
 
       if (mode === 'wake' && !addressed) {
         dispatch({ type: 'say', utterance: { ...base, skipped: true } })
+        // Not judged, but it is context: send it to the session.
+        setTimeout(() => pushToSession(), 0)
         return
       }
 
@@ -305,36 +435,82 @@ function MeetingScreen() {
       const judgeMode = addressed ? 'command' : 'ambient'
       const before = stateRef.current.utterances
       const recent = [...before.slice(-5).map((u) => ({ speaker: u.speaker, text: u.text })), { speaker, text: command }]
-      const transcript = [...toTranscript(before), { id, speaker, text: command, at: base.at, addressed }]
+      const thisLine: SessionLine = { id, speaker, text: command, at: base.at, addressed }
+      const tray = trayItems.map((t) => ({ id: t.key, title: t.title }))
+      setTimeout(() => pushToSession([thisLine]), 0)
 
       if (addressed) dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
 
-      // Jev first: is this about a person, and what kind of request is it?
-      judgeUtterance({ data: { meeting: meetingInfo, recent, mode: judgeMode } })
+      judgeUtterance({ data: { meeting: meetingInfo, recent, mode: judgeMode, trayItems: tray } })
         .catch((err: unknown) => EMPTY_RESULT(judgeMode, err instanceof Error ? err.message : String(err)))
         .then((result) => {
           dispatch({ type: 'judged', utteranceId: id, seq: mySeq, result })
           if (!addressed) return
-          if (result.action === 'show' && result.target === 'person') {
-            // The person card is the answer; no further action needed.
-            dispatch({ type: 'failed', utteranceId: id, error: 'person' })
-            return
+          const intent = result.action === 'show' && result.target === 'person' ? 'person' : result.intent.id
+          switch (intent) {
+            case 'person':
+              dispatch({ type: 'failed', utteranceId: id, error: 'person' })
+              return
+            case 'ui_close':
+            case 'ui_background':
+              dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
+              dispatch({ type: 'dismiss' })
+              return
+            case 'ui_open': {
+              dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
+              const target = result.openTarget?.id ? trayItems.find((t) => t.key === result.openTarget!.id) : trayItems[0]
+              if (target) openTrayItem(target)
+              else dispatch({ type: 'dismiss' })
+              return
+            }
+            case 'ui_send': {
+              dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
+              const latest = Object.values(stateRef.current.drafts)
+                .filter((d) => d.status !== 'sent')
+                .sort((a, b) => b.createdAt - a.createdAt)[0]
+              send(latest?.id)
+              return
+            }
+            default:
+              break
           }
-          const intent: Intent = result.intent.id === 'person' ? 'data' : result.intent.id
-          dispatch({ type: 'intent', utteranceId: id, intent })
-          return runAction({ data: { intent, request: command, transcript } })
-            .then((action) => dispatch({ type: 'resolved', utteranceId: id, result: action }))
+          // Everything else: the agent decides which tools to use.
+          return askAgent({ data: { sessionId, request: command, lines: [thisLine] } })
+            .then(({ jobId }) => dispatch({ type: 'job', utteranceId: id, jobId }))
             .catch((err: unknown) => dispatch({ type: 'failed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
         })
     },
-    [meetingInfo, mode],
+    [meetingInfo, mode, sessionId, trayItems, openTrayItem, pushToSession, send],
   )
 
-  // Poll background tasks while any are running.
-  const pendingKey = Object.keys(state.pendingTasks).join(',')
+  // Poll agent jobs and background report tasks while any are running.
+  const pendingJobKey = Object.entries(state.pendingJobs)
+    .map(([j, u]) => `${j}:${u}`)
+    .join(',')
   useEffect(() => {
-    if (!pendingKey) return
-    const ids = pendingKey.split(',')
+    if (!pendingJobKey) return
+    const pairs = pendingJobKey.split(',').map((p) => p.split(':') as [string, string])
+    const tick = () => {
+      for (const [jobId, utteranceId] of pairs) {
+        pollAgent({ data: { jobId } })
+          .then((job) => {
+            if (!job) return dispatch({ type: 'failed', utteranceId, error: 'Zadanie zniknęło (restart serwera?).' })
+            if (job.status === 'done' && job.result) dispatch({ type: 'resolved', utteranceId, result: job.result })
+            else if (job.status === 'failed') dispatch({ type: 'failed', utteranceId, error: job.error ?? 'błąd' })
+            else dispatch({ type: 'progress', utteranceId, activity: job.activity, steps: job.steps })
+          })
+          .catch(() => {})
+      }
+    }
+    tick()
+    const id = window.setInterval(tick, 700)
+    return () => window.clearInterval(id)
+  }, [pendingJobKey])
+
+  const pendingTaskKey = Object.keys(state.pendingTasks).join(',')
+  useEffect(() => {
+    if (!pendingTaskKey) return
+    const ids = pendingTaskKey.split(',')
     const tick = () => {
       for (const taskId of ids) {
         getTask({ data: { taskId } })
@@ -346,7 +522,7 @@ function MeetingScreen() {
     }
     const id = window.setInterval(tick, 2000)
     return () => window.clearInterval(id)
-  }, [pendingKey])
+  }, [pendingTaskKey])
 
   const speech = useTranscription((text) => say('Mikrofon', text))
   const listening = speech.listening
@@ -386,12 +562,16 @@ function MeetingScreen() {
     setStartedAt(null)
     setElapsed(0)
     dispatch({ type: 'reset' })
+    synced.current = 0
+    const fresh = newSessionId()
+    setSessionId(fresh)
+    syncSession({ data: { sessionId: fresh, title: meetingInfo.title, lines: [], reset: true } }).catch(() => {})
     try {
       window.localStorage.removeItem(STORAGE_KEY)
     } catch {
       /* ignore */
     }
-  }, [speech])
+  }, [speech, meetingInfo.title])
 
   const changeScenario = (id: string) => {
     reset()
@@ -431,64 +611,18 @@ function MeetingScreen() {
   const currentCard = state.current?.kind === 'card' ? cardById(state.current.id) : undefined
   const currentPerson = state.current?.kind === 'person' ? personCardById(state.current.id) : undefined
   const currentEntry = state.current?.kind === 'result' ? state.results[state.current.id] : undefined
-  const showing = Boolean(state.current && (currentCard || currentPerson || currentEntry))
+  const entryVisible = currentEntry && !(currentEntry.status === 'error' && (currentEntry.error === 'person' || currentEntry.error === 'ui'))
+  const showing = Boolean(state.current && (currentCard || currentPerson || entryVisible))
   const trigger = state.current ? state.utterances.find((u) => u.id === state.current!.utteranceId) : undefined
   const triggeredBy = trigger ? { speaker: trigger.speaker, text: trigger.text } : undefined
   const checks = state.utterances.filter((u) => u.expect !== undefined && (u.result || u.skipped))
   const passed = checks.filter((u) => expectedId(u) === shownId(u.result)).length
   const live = listening || playing
-  const transcript = useMemo(() => toTranscript(state.utterances), [state.utterances])
-  const runningTasks = pendingKey ? pendingKey.split(',').length : 0
+  const transcript = useMemo(() => toLines(state.utterances), [state.utterances])
+  const runningTasks = pendingTaskKey ? pendingTaskKey.split(',').length : 0
 
   const orbState: OrbState = state.thinking > 0 ? 'thinking' : state.armed ? 'speaking' : live ? 'listening' : 'idle'
   const status = state.thinking > 0 ? 'Sprawdzam' : state.armed ? `${ASSISTANT_NAME} słucha` : live ? (mode === 'wake' ? `Czekam na „${ASSISTANT_NAME}”` : 'Słucham') : 'Gotowy'
-
-  const trayItems: TrayItem[] = state.history
-    .filter((h) => !(state.current && sameTarget(state.current, h)))
-    .slice(0, 6)
-    .flatMap((h): TrayItem[] => {
-      const key = `${h.kind}-${h.id}-${h.facet}`
-      if (h.kind === 'person') {
-        const p = personCardById(h.id)
-        return p ? [{ key, kind: 'person', title: p.name, subtitle: p.role, status: 'done' }] : []
-      }
-      if (h.kind === 'card') {
-        const c = cardById(h.id)
-        return c ? [{ key, kind: 'card', title: c.title, subtitle: FACET_LABEL[h.facet], status: 'done' }] : []
-      }
-      const e = state.results[h.id]
-      if (!e) return []
-      const fresh = state.fresh.includes(h.id)
-      if (e.status === 'loading') return [{ key, kind: (e.intent ?? 'data') as TrayItem['kind'], title: e.question, status: 'running' }]
-      if (e.status === 'error') return e.error === 'person' ? [] : [{ key, kind: (e.intent ?? 'general') as TrayItem['kind'], title: e.question, subtitle: 'nie udało się', status: 'done' }]
-      const r = e.result
-      if (r.kind === 'task') {
-        const running = r.status === 'queued' || r.status === 'running'
-        return [{ key, kind: 'report', title: r.title ?? r.question, subtitle: running ? undefined : r.question, status: running ? 'running' : fresh ? 'fresh' : 'done', seconds: running ? Math.round((Date.now() - r.startedAt) / 1000) : undefined }]
-      }
-      if (r.kind === 'note') return [{ key, kind: 'meeting', title: r.title, subtitle: r.question, status: fresh ? 'fresh' : 'done' }]
-      return [{ key, kind: r.intent as TrayItem['kind'], title: r.headline || r.question, subtitle: r.headline ? r.question : undefined, status: fresh ? 'fresh' : 'done' }]
-    })
-  const openTrayItem = (item: TrayItem) => {
-    const h = state.history.find((x) => `${x.kind}-${x.id}-${x.facet}` === item.key)
-    if (!h) return
-    if (h.kind === 'result') dispatch({ type: 'show', utteranceId: h.id })
-    else dispatch({ type: 'pin', kind: h.kind, id: h.id, facet: h.facet })
-  }
-
-  const historyLabel = (h: Shown): string | null => {
-    if (h.kind === 'person') return personCardById(h.id)?.name ?? null
-    if (h.kind === 'card') return cardById(h.id) ? `${cardById(h.id)!.title} · ${FACET_LABEL[h.facet]}` : null
-    const e = state.results[h.id]
-    if (!e) return null
-    let q = e.question
-    if (e.status === 'done') {
-      if (e.result.kind === 'note') q = e.result.title
-      else if (e.result.kind === 'task') q = e.result.title ?? e.question
-      else if (e.result.headline) q = e.result.headline
-    }
-    return q.length > 40 ? `${q.slice(0, 38)}…` : q
-  }
 
   return (
     <div className="app-theme flex h-svh flex-col overflow-hidden bg-background text-foreground antialiased">
@@ -523,7 +657,7 @@ function MeetingScreen() {
           {listening ? <MicOffIcon /> : <MicIcon />}
           {speech.status === 'connecting' ? 'Łączę…' : listening ? 'Stop' : 'Mikrofon'}
         </Button>
-        <Button size="icon-sm" variant="ghost" onClick={reset} title="Od nowa (czyści transkrypcję)">
+        <Button size="icon-sm" variant="ghost" onClick={reset} title="Nowe spotkanie (czyści sesję)">
           <RotateCcwIcon />
         </Button>
         <span className="min-w-0 flex-1 truncate pl-2 text-xs text-muted-foreground">
@@ -533,6 +667,7 @@ function MeetingScreen() {
           {speech.engine && listening && ` · ${speech.engine === 'grok' ? 'Grok Voice Transcribe' : 'mikrofon przeglądarki'}`}
           {runningTasks > 0 && ` · ${runningTasks} zadanie w tle`}
           {speech.error && <span className="text-destructive"> · {speech.error}</span>}
+          {debug && sessionId && <span className="font-mono"> · {sessionId}</span>}
           {debug && checks.length > 0 && (
             <span className="font-mono">
               {' '}
@@ -575,7 +710,7 @@ function MeetingScreen() {
             <h1 className="text-3xl font-semibold tracking-tight text-balance">{state.armed ? 'O co chodzi?' : scenario.title}</h1>
             <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
               {state.armed
-                ? 'Pytaj o ludzi, dane firmy, to spotkanie, internet albo poproś o raport.'
+                ? 'Pytaj o ludzi, dane firmy, to spotkanie, internet; poproś o maila, dokument, wykres, raport albo zrzut strony.'
                 : mode === 'wake'
                   ? `„${ASSISTANT_NAME}, ile zapłaciliśmy za Pipedrive w sierpniu?” · „${ASSISTANT_NAME}, zrób punkty z ostatniego tematu” · „${ASSISTANT_NAME}, dzięki”.`
                   : scenario.goal}
@@ -593,11 +728,13 @@ function MeetingScreen() {
               </div>
               {currentCard && <KnowledgeCardView card={currentCard} facet={state.current.facet} triggeredBy={triggeredBy} />}
               {currentPerson && <PersonCardView person={currentPerson} triggeredBy={triggeredBy} onOpenCard={(id) => dispatch({ type: 'pin', kind: 'card', id })} />}
-              {currentEntry?.status === 'loading' && <AnswerLoadingView question={currentEntry.question} intent={currentEntry.intent} triggeredBy={triggeredBy} />}
-              {currentEntry?.status === 'error' && currentEntry.error !== 'person' && <AnswerErrorView question={currentEntry.question} error={currentEntry.error} />}
-              {currentEntry?.status === 'done' && currentEntry.result.kind === 'answer' && <AnswerCardView result={currentEntry.result} triggeredBy={triggeredBy} debug={debug} />}
-              {currentEntry?.status === 'done' && currentEntry.result.kind === 'note' && <NoteCardView note={currentEntry.result} transcript={transcript} triggeredBy={triggeredBy} debug={debug} />}
+              {currentEntry?.status === 'loading' && <AgentLoadingView question={currentEntry.question} activity={currentEntry.activity} steps={currentEntry.steps} triggeredBy={triggeredBy} />}
+              {currentEntry?.status === 'error' && entryVisible && <AgentErrorView question={currentEntry.question} error={currentEntry.error} />}
+              {currentEntry?.status === 'done' && currentEntry.result.kind === 'agent' && (
+                <AgentCardView result={currentEntry.result} transcript={transcript} drafts={state.drafts} onSendDraft={(id) => send(id)} sendingDraft={sendingDraft} triggeredBy={triggeredBy} debug={debug} />
+              )}
               {currentEntry?.status === 'done' && currentEntry.result.kind === 'task' && <ReportCardView task={currentEntry.result} triggeredBy={triggeredBy} debug={debug} />}
+              {currentEntry?.status === 'done' && currentEntry.result.kind === 'sent' && <EmailSentView draft={currentEntry.result.draft} triggeredBy={triggeredBy} />}
             </div>
           </div>
         )}
@@ -610,25 +747,6 @@ function MeetingScreen() {
                 <XIcon />
               </Button>
             </div>
-            {state.history.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 border-b border-border px-3 py-2">
-                {state.history.map((h) => {
-                  const label = historyLabel(h)
-                  if (!label) return null
-                  const active = state.current ? sameTarget(state.current, h) : false
-                  return (
-                    <Button
-                      key={`${h.kind}-${h.id}-${h.facet}`}
-                      size="xs"
-                      variant={active ? 'secondary' : 'outline'}
-                      onClick={() => (h.kind === 'result' ? dispatch({ type: 'show', utteranceId: h.id }) : dispatch({ type: 'pin', kind: h.kind, id: h.id, facet: h.facet }))}
-                    >
-                      {label}
-                    </Button>
-                  )
-                })}
-              </div>
-            )}
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
               <TranscriptRail utterances={state.utterances} interim={speech.interim} debug />
             </div>
@@ -636,7 +754,7 @@ function MeetingScreen() {
         )}
       </main>
 
-      {/* One caption line: what was said last, what is being heard now, and a finished task waiting to be seen. */}
+      {/* One caption line: what was said last, and what is being heard now. */}
       <footer className="flex h-14 shrink-0 items-center gap-4 border-t border-border/60 px-6">
         <div className="flex min-w-0 flex-1 items-baseline gap-3" aria-live="polite">
           {speech.interim ? (

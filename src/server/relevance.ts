@@ -28,6 +28,8 @@ export interface RelevanceInput {
   /** Older turns first; the last one is the utterance being judged. */
   recent: TranscriptTurn[]
   mode?: JudgeMode
+  /** Things currently in the tray, so "otwórz raport" can be resolved to one of them. */
+  trayItems?: { id: string; title: string }[]
 }
 
 export type RelevanceAction = 'show' | 'mention' | 'none'
@@ -47,6 +49,8 @@ export interface RelevanceResult {
   facet: { id: Facet; confidence: number }
   /** Command mode: what kind of request this is. */
   intent: { id: Intent; confidence: number }
+  /** Command mode with tray items: which tray item an "open" request refers to. */
+  openTarget?: { id: string | null; confidence: number }
   action: RelevanceAction
   /** What `show` refers to: `topic.id` for a card, `person.id` for a person. */
   target: RelevanceTarget | null
@@ -178,6 +182,15 @@ function buildRequest(input: RelevanceInput, mode: JudgeMode) {
       instructions: 'What kind of request is latest_utterance? Pick the action the assistant should take.',
       criteria: Object.fromEntries(INTENTS.map((i) => [i.id, i.hint])) as Record<string, string>,
     },
+    ...(input.trayItems?.length
+      ? {
+          open_target: {
+            type: 'choice' as const,
+            instructions: 'If latest_utterance asks to bring back or open something the assistant prepared earlier, which of these items is meant? Choose none if it is not such a request.',
+            criteria: { ...Object.fromEntries(input.trayItems.slice(0, 20).map((t) => [t.id, t.title])), none: 'Not a request to open one of these.' } as Record<string, string>,
+          },
+        }
+      : {}),
   }
 
   return { state, questions }
@@ -197,6 +210,7 @@ interface JevAnswers {
   topic: ChoiceAnswer
   facet: ChoiceAnswer
   intent: ChoiceAnswer
+  open_target?: ChoiceAnswer
 }
 
 async function withJev(input: RelevanceInput, t: Transport, started: number): Promise<RelevanceResult> {
@@ -233,7 +247,8 @@ async function withJev(input: RelevanceInput, t: Transport, started: number): Pr
   const topic = pick(answers.topic)
   const person = pick(answers.person)
   const facet = (FACETS.includes(answers.facet.choice as Facet) ? answers.facet.choice : 'general') as Facet
-  const intentId = (INTENTS.some((i) => i.id === answers.intent.choice) ? answers.intent.choice : 'general') as Intent
+  const intentId = (INTENTS.some((i) => i.id === answers.intent.choice) ? answers.intent.choice : 'ask') as Intent
+  const openTarget = answers.open_target ? { id: answers.open_target.choice === 'none' ? null : answers.open_target.choice, confidence: answers.open_target.confidence ?? 0 } : undefined
 
   const scores: Scores = {
     needsInfo: answers.needs_info.noul,
@@ -256,14 +271,16 @@ async function withJev(input: RelevanceInput, t: Transport, started: number): Pr
     person: { id: person.id, confidence: person.confidence },
     facet: { id: facet, confidence: answers.facet.confidence ?? 0 },
     intent: { id: intentId, confidence: answers.intent.confidence ?? 0 },
+    openTarget,
     ...decide(mode, scores),
   }
 }
 
 const INTENT_MARKERS: [Intent, string[]][] = [
-  ['meeting', ['podsumuj', 'podsumowanie', 'bullet', 'punkty', 'notatk', 'co ustaliliśmy', 'co powiedział', 'co mówił', 'ostatni temat', 'omawialiśmy', 'action item', 'zadania z', 'streszcz']],
-  ['report', ['przygotuj', 'napisz', 'zrób raport', 'raport', 'dokument', 'wykres', 'wizualizacj', 'prezentacj', 'mail do', 'maila do', 'plan ']],
-  ['web', ['w internecie', 'wygoogluj', 'sprawdź w sieci', 'kurs ', 'newsy', 'wiadomości', 'konkurenc', 'na rynku', 'ustaw', 'przepis', 'cena rynkowa']],
+  ['ui_send', ['wyślij', 'wysyłaj', 'wysłać', 'wysylaj']],
+  ['ui_background', ['do tła', 'odłóż', 'na później', 'wrócimy do tego', 'zostaw to']],
+  ['ui_open', ['otwórz', 'pokaż ten', 'pokaż tę', 'wróć do', 'co z tym']],
+  ['ui_close', ['schowaj', 'zamknij', 'wystarczy', 'to wszystko']],
   ['person', ['kim jest', 'kto to', 'czym się zajmuje', 'nad czym pracuje', 'za co odpowiada']],
 ]
 
@@ -337,14 +354,20 @@ export function fallback(input: RelevanceInput, elapsedMs: number): RelevanceRes
     asksPerson,
   }
 
-  let intent: Intent = topic.score > 0 || person.score > 0 ? 'data' : 'general'
+  let intent: Intent = 'ask'
   for (const [id, markers] of INTENT_MARKERS) {
     if (markers.some((m) => latest.includes(m))) {
       intent = id
       break
     }
   }
-  if (intent === 'person' && !person.id) intent = 'data'
+  if (intent === 'person' && !person.id) intent = 'ask'
+
+  let openTarget: RelevanceResult['openTarget']
+  if (input.trayItems?.length) {
+    const hit = input.trayItems.find((t) => t.title.toLowerCase().split(/[^\p{L}\p{N}]+/u).some((w) => w.length > 3 && latest.includes(w)))
+    openTarget = { id: hit?.id ?? null, confidence: hit ? 0.7 : 0 }
+  }
 
   return {
     engine: 'fallback',
@@ -355,6 +378,7 @@ export function fallback(input: RelevanceInput, elapsedMs: number): RelevanceRes
     person: { id: person.id, confidence: person.confidence },
     facet: { id: facet, confidence: facetHits > 0 ? 0.8 : 0.3 },
     intent: { id: intent, confidence: 0.6 },
+    openTarget,
     ...decide(mode, scores),
   }
 }

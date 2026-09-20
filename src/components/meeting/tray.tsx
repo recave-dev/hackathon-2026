@@ -1,10 +1,10 @@
-import { BrainIcon, DatabaseIcon, FileTextIcon, GlobeIcon, LayersIcon, NotebookPenIcon, UserIcon } from 'lucide-react'
+import { BarChart3Icon, DatabaseIcon, FileTextIcon, GlobeIcon, ImageIcon, LayersIcon, MailIcon, NotebookPenIcon, SparklesIcon, UserIcon } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
-export type TrayKind = 'person' | 'card' | 'data' | 'general' | 'web' | 'meeting' | 'report'
+export type TrayKind = 'person' | 'card' | 'answer' | 'data' | 'web' | 'note' | 'report' | 'screenshot' | 'chart' | 'document' | 'email'
 
 export interface TrayItem {
   key: string
@@ -21,21 +21,29 @@ export interface TrayItem {
 const ICON: Record<TrayKind, ComponentType<{ className?: string }>> = {
   person: UserIcon,
   card: LayersIcon,
+  answer: SparklesIcon,
   data: DatabaseIcon,
-  general: BrainIcon,
   web: GlobeIcon,
-  meeting: NotebookPenIcon,
+  note: NotebookPenIcon,
   report: FileTextIcon,
+  screenshot: ImageIcon,
+  chart: BarChart3Icon,
+  document: FileTextIcon,
+  email: MailIcon,
 }
 
 const KIND_LABEL: Record<TrayKind, string> = {
   person: 'Osoba',
   card: 'Temat',
+  answer: 'Odpowiedź',
   data: 'Dane firmy',
-  general: 'Wiedza ogólna',
   web: 'Internet',
-  meeting: 'Notatka',
+  note: 'Notatka',
   report: 'Raport',
+  screenshot: 'Strona',
+  chart: 'Wykres',
+  document: 'Dokument',
+  email: 'Mail',
 }
 
 /**
