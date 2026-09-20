@@ -10,7 +10,7 @@ import type {
   TranscriptSegment,
 } from './types'
 
-export const STATE_VERSION = 5
+export const STATE_VERSION = 6
 
 /** Fixed demo clock: Tuesday, 10 November 2026, 09:00 (local time). */
 export const DEMO_NOW = '2026-11-10T09:00:00'
@@ -722,6 +722,39 @@ export const INITIAL_MEETINGS: DemoState['meetings'] = [
       'Zakres szkoleń dla użytkowników Alfy nie został ustalony.',
     ],
     sourceIds: ['src-alfa-contract', 'src-alfa-roadmap', 'src-alfa-email'],
+  },
+  {
+    id: 'meet-gamma',
+    title: 'Gamma Logistics — kickoff platformy',
+    at: '2026-11-10T14:30:00',
+    projectId: 'prj-gamma',
+    participantIds: ['p-tomasz', 'p-piotr', 'p-kasia'],
+    goal: 'Ustalić zakres pierwszej fazy, skład zespołu i sposób raportowania postępu klientowi.',
+    priorAgreements: ['Oferta z 28 października: faza 1 w 12 tygodni, zespół 4 osoby.'],
+    openIssues: ['Klient chce tygodniowe demo, a oferta zakładała dwutygodniowe sprinty.', 'Nie ustalono, kto po stronie Gammy odbiera funkcjonalności.'],
+    sourceIds: [],
+  },
+  {
+    id: 'meet-budget',
+    title: 'Budżet 2027 — pierwsza wersja',
+    at: '2026-11-11T10:00:00',
+    projectId: 'prj-infra',
+    participantIds: ['p-tomasz', 'p-michal', 'p-piotr'],
+    goal: 'Przejść przez koszty stałe na 2027 i zdecydować o rezerwie na hosting i narzędzia.',
+    priorAgreements: ['Budżet 2026: koszty narzędzi nie przekraczają 4% przychodu.'],
+    openIssues: ['Oferta hostingu wygasa 20 listopada.', 'Brak decyzji o liczbie miejsc w Pipedrive na przyszły rok.'],
+    sourceIds: ['src-budget', 'src-hosting-offer'],
+  },
+  {
+    id: 'meet-edo',
+    title: 'e-Doręczenia — przegląd pilota',
+    at: '2026-11-12T13:00:00',
+    projectId: 'prj-edoreczenia',
+    participantIds: ['p-tomasz', 'p-kasia', 'p-ola'],
+    goal: 'Ocenić wynik pilota i zdecydować, czy konektor wchodzi do oferty na 2027.',
+    priorAgreements: ['Cel pilota: 10 płatnych aktywacji w 6 miesięcy.'],
+    openIssues: ['6 aktywacji wobec celu 10 — czy to koniec, czy przedłużenie?'],
+    sourceIds: ['src-edo-meeting', 'src-edo-kpi', 'src-edo-sales'],
   },
 ]
 

@@ -680,7 +680,7 @@ function MeetingScreen() {
         <Button variant={debug ? 'secondary' : 'ghost'} size="icon-sm" aria-pressed={debug} title="Transkrypcja i diagnostyka" onClick={() => setDebug((d) => !d)}>
           <BugIcon />
         </Button>
-        <Button variant="ghost" size="icon-sm" nativeButton={false} render={<Link to="/context" />} title="Workspace">
+        <Button variant="ghost" size="icon-sm" nativeButton={false} render={<Link to="/" />} title="Dashboard">
           <LayoutGridIcon />
         </Button>
       </header>

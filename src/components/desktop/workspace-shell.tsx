@@ -1,5 +1,5 @@
 import { Link, useMatchRoute, useMatches } from '@tanstack/react-router'
-import { LibraryIcon, ListChecksIcon, PlugIcon, RadioIcon, SmartphoneIcon } from 'lucide-react'
+import { LayoutDashboardIcon, LibraryIcon, ListChecksIcon, PlugIcon, SmartphoneIcon } from 'lucide-react'
 import { Fragment, type ComponentType, type ReactNode } from 'react'
 
 import {
@@ -41,7 +41,7 @@ declare module '@tanstack/react-router' {
 }
 
 type NavItem = {
-  to: '/meeting' | '/decisions' | '/context' | '/connectors'
+  to: '/' | '/decisions' | '/context' | '/connectors'
   label: string
   icon: ComponentType<{ className?: string }>
   count?: number
@@ -55,7 +55,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const connected = state.connectors.filter((c) => c.status === 'connected' || c.status === 'paused').length
 
   const items: NavItem[] = [
-    { to: '/meeting', label: 'Spotkanie na żywo', icon: RadioIcon },
+    { to: '/', label: 'Dashboard', icon: LayoutDashboardIcon },
     { to: '/decisions', label: 'Decisions', icon: ListChecksIcon, count: pending },
     { to: '/context', label: 'Context', icon: LibraryIcon, count: state.contexts.length },
     { to: '/connectors', label: 'Connectors', icon: PlugIcon, count: connected },
@@ -67,7 +67,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
         <SidebarProvider>
           <Sidebar>
             <SidebarHeader className="px-4 pt-5 pb-2">
-              <Link to="/context" className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+              <Link to="/" className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
                 <span aria-hidden className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground">
                   D
                 </span>
@@ -83,7 +83,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {items.map((item) => {
-                      const active = Boolean(matchRoute({ to: item.to, fuzzy: true }))
+                      const active = Boolean(matchRoute({ to: item.to, fuzzy: item.to !== '/' }))
                       return (
                         <SidebarMenuItem key={item.to}>
                           <SidebarMenuButton isActive={active} render={<Link to={item.to} />}>

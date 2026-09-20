@@ -69,9 +69,7 @@ export function formatDuration(totalSec: number): string {
 
 export function greetingFor(iso: string): string {
   const h = parseLocal(iso).getHours()
-  if (h < 12) return 'Dobry poranek'
-  if (h < 18) return 'Dobry dzień'
-  return 'Dobry wieczór'
+  return h < 18 ? 'Dzień dobry' : 'Dobry wieczór'
 }
 
 export const firstName = (fullName: string): string => fullName.split(' ')[0] ?? fullName

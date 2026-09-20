@@ -9,10 +9,10 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkspaceRouteImport } from './routes/_workspace'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as MeetingRouteImport } from './routes/meeting'
+import { Route as WorkspaceIndexRouteImport } from './routes/_workspace/index'
 import { Route as WorkspaceConnectorsRouteImport } from './routes/_workspace/connectors'
 import { Route as WorkspaceContextRouteImport } from './routes/_workspace/context'
 import { Route as WorkspaceDecisionsRouteImport } from './routes/_workspace/decisions'
@@ -27,11 +27,6 @@ import { Route as AppDecisionsDecisionIdRouteImport } from './routes/app/decisio
 import { Route as AppMeetingsMeetingIdRouteImport } from './routes/app/meetings.$meetingId'
 import { Route as AppNotesNoteIdRouteImport } from './routes/app/notes.$noteId'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/_workspace',
   getParentRoute: () => rootRouteImport,
@@ -45,6 +40,11 @@ const MeetingRoute = MeetingRouteImport.update({
   id: '/meeting',
   path: '/meeting',
   getParentRoute: () => rootRouteImport,
+} as any)
+const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkspaceRoute,
 } as any)
 const WorkspaceConnectorsRoute = WorkspaceConnectorsRouteImport.update({
   id: '/connectors',
@@ -114,8 +114,8 @@ const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
+  '/': typeof WorkspaceIndexRoute
   '/meeting': typeof MeetingRoute
   '/connectors': typeof WorkspaceConnectorsRoute
   '/context': typeof WorkspaceContextRouteWithChildren
@@ -132,9 +132,9 @@ export interface FileRoutesByFullPath {
   '/app/decisions/': typeof AppDecisionsIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
   '/meeting': typeof MeetingRoute
   '/connectors': typeof WorkspaceConnectorsRoute
+  '/': typeof WorkspaceIndexRoute
   '/app': typeof AppIndexRoute
   '/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
@@ -148,13 +148,13 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
   '/_workspace': typeof WorkspaceRouteWithChildren
   '/meeting': typeof MeetingRoute
   '/_workspace/connectors': typeof WorkspaceConnectorsRoute
   '/_workspace/context': typeof WorkspaceContextRouteWithChildren
   '/_workspace/decisions': typeof WorkspaceDecisionsRouteWithChildren
+  '/_workspace/': typeof WorkspaceIndexRoute
   '/app/': typeof AppIndexRoute
   '/_workspace/context/$topicId': typeof WorkspaceContextTopicIdRoute
   '/_workspace/decisions/$decisionId': typeof WorkspaceDecisionsDecisionIdRoute
@@ -169,8 +169,8 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
     | '/app'
+    | '/'
     | '/meeting'
     | '/connectors'
     | '/context'
@@ -187,9 +187,9 @@ export interface FileRouteTypes {
     | '/app/decisions/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
     | '/meeting'
     | '/connectors'
+    | '/'
     | '/app'
     | '/context/$topicId'
     | '/decisions/$decisionId'
@@ -202,13 +202,13 @@ export interface FileRouteTypes {
     | '/app/decisions'
   id:
     | '__root__'
-    | '/'
     | '/app'
     | '/_workspace'
     | '/meeting'
     | '/_workspace/connectors'
     | '/_workspace/context'
     | '/_workspace/decisions'
+    | '/_workspace/'
     | '/app/'
     | '/_workspace/context/$topicId'
     | '/_workspace/decisions/$decisionId'
@@ -222,7 +222,6 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
   MeetingRoute: typeof MeetingRoute
@@ -230,13 +229,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_workspace': {
       id: '/_workspace'
       path: ''
@@ -257,6 +249,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/meeting'
       preLoaderRoute: typeof MeetingRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_workspace/': {
+      id: '/_workspace/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof WorkspaceIndexRouteImport
+      parentRoute: typeof WorkspaceRoute
     }
     '/_workspace/connectors': {
       id: '/_workspace/connectors'
@@ -404,12 +403,14 @@ interface WorkspaceRouteChildren {
   WorkspaceConnectorsRoute: typeof WorkspaceConnectorsRoute
   WorkspaceContextRoute: typeof WorkspaceContextRouteWithChildren
   WorkspaceDecisionsRoute: typeof WorkspaceDecisionsRouteWithChildren
+  WorkspaceIndexRoute: typeof WorkspaceIndexRoute
 }
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceConnectorsRoute: WorkspaceConnectorsRoute,
   WorkspaceContextRoute: WorkspaceContextRouteWithChildren,
   WorkspaceDecisionsRoute: WorkspaceDecisionsRouteWithChildren,
+  WorkspaceIndexRoute: WorkspaceIndexRoute,
 }
 
 const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
@@ -417,7 +418,6 @@ const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
   WorkspaceRoute: WorkspaceRouteWithChildren,
   MeetingRoute: MeetingRoute,

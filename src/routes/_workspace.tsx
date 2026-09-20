@@ -4,7 +4,7 @@ import { WorkspaceShell } from '@/components/desktop/workspace-shell'
 
 export const Route = createFileRoute('/_workspace')({
   head: () => ({
-    meta: [{ title: 'Droker · Workspace' }, { name: 'theme-color', content: '#faf8f4' }],
+    meta: [{ title: 'Droker · Workspace' }, { name: 'theme-color', content: '#121215' }],
   }),
   component: WorkspaceLayout,
 })
