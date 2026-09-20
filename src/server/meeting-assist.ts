@@ -23,6 +23,7 @@ export const judgeUtterance = createServerFn({ method: 'POST' })
       recent,
       mode: input?.mode === 'command' ? 'command' : 'ambient',
       trayItems: (Array.isArray(input?.trayItems) ? input.trayItems : []).slice(0, 20).map((t) => ({ id: clean(t?.id, 80), title: clean(t?.title, 120) })).filter((t) => t.id && t.title),
+      presentations: (Array.isArray(input?.presentations) ? input.presentations : []).slice(0, 30).map((p) => ({ id: clean(p?.id, 80), title: clean(p?.title, 120) })).filter((p) => p.id && p.title),
     }
   })
   .handler(async ({ data }): Promise<RelevanceResult> => {
@@ -82,6 +83,52 @@ export const syncSession = createServerFn({ method: 'POST' })
     const added = appendLines(session, data.lines)
     void refreshDigest(session)
     return { added, lines: session.lines.length, digest: session.digest }
+  })
+
+export type { FocusCommand, FocusInput, FocusKind, FocusResult } from './focus.ts'
+export type { Deck, DeckSummary, Slide } from '../lib/slides.ts'
+
+/** Focus mode: is what was just said a steering command for what is on screen, and which one? */
+export const judgeFocus = createServerFn({ method: 'POST' })
+  .inputValidator((input: import('./focus.ts').FocusInput): import('./focus.ts').FocusInput => ({
+    text: clean(input?.text, 400),
+    focus: {
+      kind: 'presentation',
+      title: clean(input?.focus?.title, 160),
+      position: Math.max(1, Math.floor(Number(input?.focus?.position) || 1)),
+      total: Math.max(0, Math.floor(Number(input?.focus?.total) || 0)),
+      itemTitles: (Array.isArray(input?.focus?.itemTitles) ? input.focus.itemTitles : []).slice(0, 40).map((t) => clean(t, 120)),
+    },
+  }))
+  .handler(async ({ data }) => {
+    const { judgeFocusCommand } = await import('./focus.ts')
+    return judgeFocusCommand(data)
+  })
+
+/** Stored presentations, newest first, without slide content. */
+export const listPresentations = createServerFn({ method: 'GET' }).handler(async () => {
+  const { listDecks } = await import('./presentations.ts')
+  return listDecks()
+})
+
+export const getPresentation = createServerFn({ method: 'POST' })
+  .inputValidator((input: { id: string }) => ({ id: clean(input?.id, 80) }))
+  .handler(async ({ data }) => {
+    const { getDeck } = await import('./presentations.ts')
+    return getDeck(data.id)
+  })
+
+/** Adds a Markdown deck (slides separated by `---`) to the company presentations. */
+export const savePresentation = createServerFn({ method: 'POST' })
+  .inputValidator((input: { title?: string; markdown: string }) => {
+    const markdown = String(input?.markdown ?? '').trim().slice(0, 200_000)
+    if (!markdown) throw new Error('Wklej treść prezentacji.')
+    return { title: clean(input?.title, 160), markdown }
+  })
+  .handler(async ({ data }) => {
+    const { saveDeck } = await import('./presentations.ts')
+    const { slides, ...rest } = saveDeck(data)
+    return { ...rest, slides: slides.length }
   })
 
 /** Every meeting session Bolek has seen, newest activity first. */

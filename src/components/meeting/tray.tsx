@@ -1,10 +1,10 @@
-import { BarChart3Icon, DatabaseIcon, FileTextIcon, GlobeIcon, ImageIcon, LayersIcon, MailIcon, NotebookPenIcon, SparklesIcon, UserIcon } from 'lucide-react'
+import { BarChart3Icon, DatabaseIcon, FileTextIcon, GlobeIcon, ImageIcon, LayersIcon, MailIcon, NotebookPenIcon, PresentationIcon, SparklesIcon, UserIcon } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
-export type TrayKind = 'person' | 'card' | 'answer' | 'data' | 'web' | 'note' | 'report' | 'screenshot' | 'chart' | 'document' | 'email'
+export type TrayKind = 'person' | 'card' | 'answer' | 'data' | 'web' | 'note' | 'report' | 'screenshot' | 'chart' | 'document' | 'email' | 'presentation'
 
 export interface TrayItem {
   key: string
@@ -30,6 +30,7 @@ const ICON: Record<TrayKind, ComponentType<{ className?: string }>> = {
   chart: BarChart3Icon,
   document: FileTextIcon,
   email: MailIcon,
+  presentation: PresentationIcon,
 }
 
 const KIND_LABEL: Record<TrayKind, string> = {
@@ -44,6 +45,7 @@ const KIND_LABEL: Record<TrayKind, string> = {
   chart: 'Wykres',
   document: 'Dokument',
   email: 'Mail',
+  presentation: 'Prezentacja',
 }
 
 /**

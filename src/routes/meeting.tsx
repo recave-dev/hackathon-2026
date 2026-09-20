@@ -6,6 +6,7 @@ import { AgentCardView, AgentErrorView, AgentLoadingView } from '@/components/me
 import { EmailSentView } from '@/components/meeting/email-sent-card'
 import { KnowledgeCardView } from '@/components/meeting/knowledge-card'
 import { PersonCardView } from '@/components/meeting/person-card'
+import { PresentationView } from '@/components/meeting/presentation-view'
 import { ReportCardView } from '@/components/meeting/report-card'
 import { TranscriptRail, shownId, type Utterance } from '@/components/meeting/transcript-rail'
 import { Tray, type TrayItem } from '@/components/meeting/tray'
@@ -13,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { FACET_LABEL, SCENARIOS, cardById, type Facet } from '@/demo/knowledge'
 import { personCardById } from '@/demo/people'
 import { PEOPLE } from '@/demo/seed'
+import { matchDeck, type Deck, type DeckSummary } from '@/lib/slides'
 import { useTranscription } from '@/lib/transcription'
 import { cn } from '@/lib/utils'
 import { ASSISTANT_NAME, isDismissal, matchWake } from '@/lib/wake-word'
@@ -22,8 +24,11 @@ import { ORB_COLORS } from '@/routes/app/index'
 import {
   askAgent,
   getTask,
+  getPresentation,
   getSession,
+  judgeFocus,
   judgeUtterance,
+  listPresentations,
   pollAgent,
   sendDraft,
   syncSession,
@@ -39,6 +44,8 @@ import {
 interface MeetingSearch {
   new?: boolean
   session?: string
+  /** Open this presentation in focus mode right away. */
+  present?: string
 }
 
 export const Route = createFileRoute('/meeting')({
@@ -46,6 +53,7 @@ export const Route = createFileRoute('/meeting')({
     const out: MeetingSearch = {}
     if (search.new === true || search.new === 'true' || search.new === 1 || search.new === '1') out.new = true
     if (typeof search.session === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(search.session)) out.session = search.session
+    if (typeof search.present === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(search.present)) out.present = search.present
     return out
   },
   head: () => ({ meta: [{ title: `${ASSISTANT_NAME} · Spotkanie na żywo` }] }),
@@ -54,11 +62,25 @@ export const Route = createFileRoute('/meeting')({
 
 /** What is on screen: a topic card, a person, or a result keyed by the utterance (or task) that produced it. */
 interface Shown {
-  kind: 'card' | 'person' | 'result'
+  kind: 'card' | 'person' | 'result' | 'presentation'
   id: string
   facet: Facet
   utteranceId: string
   seq: number
+  /** Presentations: the slide the room was on (0-based). */
+  slide?: number
+}
+
+/**
+ * Focus mode: one thing owns the screen and the room steers it by voice
+ * without saying the assistant's name. Presentations for now; the shape is
+ * generic so other content can use it later.
+ */
+interface Focus {
+  kind: 'presentation'
+  id: string
+  /** 0-based. */
+  slide: number
 }
 
 /** A sent email, shown as its own confirmation card. */
@@ -92,6 +114,7 @@ interface MeetingState {
   armed: boolean
   /** Requests in flight; the orb thinks while any are pending. */
   thinking: number
+  focus: Focus | null
 }
 
 type MeetingAction =
@@ -110,8 +133,13 @@ type MeetingAction =
   | { type: 'dismiss' }
   | { type: 'restore'; state: Persisted }
   | { type: 'reset' }
+  | { type: 'focus'; id: string; slide?: number; utteranceId?: string }
+  | { type: 'slide'; slide: number; total: number }
+  | { type: 'unfocus' }
+  /** A line judged in focus mode: done thinking, nothing more to do with it. */
+  | { type: 'settle'; utteranceId: string }
 
-const EMPTY: MeetingState = { utterances: [], current: null, history: [], results: {}, pendingTasks: {}, pendingJobs: {}, fresh: [], drafts: {}, seq: 0, armed: false, thinking: 0 }
+const EMPTY: MeetingState = { utterances: [], current: null, history: [], results: {}, pendingTasks: {}, pendingJobs: {}, fresh: [], drafts: {}, seq: 0, armed: false, thinking: 0, focus: null }
 
 const sameTarget = (a: Shown, b: Shown) => a.kind === b.kind && a.id === b.id && (a.kind !== 'card' || a.facet === b.facet)
 
@@ -119,7 +147,14 @@ function pushHistory(history: Shown[], next: Shown): Shown[] {
   return [next, ...history.filter((h) => !sameTarget(h, next))].slice(0, 12)
 }
 
+/** Focus lasts only while its item is what is on screen: anything else taking the screen ends it. */
 function reducer(state: MeetingState, action: MeetingAction): MeetingState {
+  const next = reduce(state, action)
+  if (next.focus && !(next.current?.kind === 'presentation' && next.current.id === next.focus.id)) return { ...next, focus: null }
+  return next
+}
+
+function reduce(state: MeetingState, action: MeetingAction): MeetingState {
   switch (action.type) {
     case 'say': {
       const pending = !action.utterance.skipped
@@ -224,12 +259,29 @@ function reducer(state: MeetingState, action: MeetingAction): MeetingState {
       return { ...EMPTY, ...action.state }
     case 'reset':
       return EMPTY
+    case 'focus': {
+      const seq = state.seq + 1
+      const remembered = state.history.find((h) => h.kind === 'presentation' && h.id === action.id)?.slide ?? 0
+      const slide = action.slide ?? remembered
+      const current: Shown = { kind: 'presentation', id: action.id, facet: 'general', utteranceId: action.utteranceId ?? '', seq, slide }
+      return { ...state, seq, current, history: pushHistory(state.history, current), focus: { kind: 'presentation', id: action.id, slide }, armed: false }
+    }
+    case 'slide': {
+      if (!state.focus || !state.current || state.current.kind !== 'presentation') return state
+      const slide = Math.min(Math.max(0, action.slide), Math.max(0, action.total - 1))
+      const current = { ...state.current, slide }
+      return { ...state, current, history: pushHistory(state.history, current), focus: { ...state.focus, slide } }
+    }
+    case 'unfocus':
+      return { ...state, current: null, focus: null, armed: false }
+    case 'settle':
+      return { ...state, utterances: state.utterances.map((u) => (u.id === action.utteranceId ? { ...u, pending: false, skipped: true } : u)), thinking: Math.max(0, state.thinking - 1) }
   }
 }
 
 const STORAGE_KEY = 'bolek-meeting-v2'
 
-interface Persisted extends Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks' | 'drafts'> {
+interface Persisted extends Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks' | 'drafts' | 'focus'> {
   sessionId: string
   scenarioId: string
   cursor: number
@@ -253,6 +305,7 @@ function loadPersisted(): Persisted | null {
       seq: parsed.seq ?? 0,
       pendingTasks: parsed.pendingTasks ?? {},
       drafts: parsed.drafts ?? {},
+      focus: parsed.focus ?? null,
       sessionId: parsed.sessionId ?? newSessionId(),
       scenarioId: parsed.scenarioId ?? SCENARIOS[0]!.id,
       cursor: parsed.cursor ?? 0,
@@ -301,6 +354,47 @@ function MeetingScreen() {
   stateRef.current = state
   const synced = useRef(0)
 
+  // Company presentations: the list for Jev to pick from, full decks once opened.
+  const [deckList, setDeckList] = useState<DeckSummary[]>([])
+  const [decks, setDecks] = useState<Record<string, Deck>>({})
+  const decksRef = useRef(decks)
+  decksRef.current = decks
+  const refreshDecks = useCallback(
+    () =>
+      listPresentations()
+        .then((list) => {
+          setDeckList(list)
+          return list
+        })
+        .catch(() => [] as DeckSummary[]),
+    [],
+  )
+  useEffect(() => {
+    void refreshDecks()
+  }, [refreshDecks])
+
+  /** Puts a deck on screen in focus mode, fetching its slides if needed. */
+  const openDeck = useCallback((id: string, slide?: number, utteranceId?: string) => {
+    dispatch({ type: 'focus', id, slide, utteranceId })
+    if (decksRef.current[id]) return
+    getPresentation({ data: { id } })
+      .then((deck) => {
+        if (deck) setDecks((d) => ({ ...d, [deck.id]: deck }))
+        else dispatch({ type: 'unfocus' })
+      })
+      .catch(() => dispatch({ type: 'unfocus' }))
+  }, [])
+  // A restored presentation needs its slides too.
+  const focusId = state.focus?.id
+  useEffect(() => {
+    if (!focusId || decksRef.current[focusId]) return
+    getPresentation({ data: { id: focusId } })
+      .then((deck) => {
+        if (deck) setDecks((d) => ({ ...d, [deck.id]: deck }))
+      })
+      .catch(() => {})
+  }, [focusId])
+
   const search = Route.useSearch()
   const navigate = useNavigate()
 
@@ -313,6 +407,8 @@ function MeetingScreen() {
     if (restored.current) return
     restored.current = true
     const keepUrl = (id: string) => void navigate({ to: '/meeting', search: { session: id }, replace: true })
+    // `?present=<deck>` is consumed here: the URL is rewritten to the session and the deck opens in focus.
+    const present = search.present
 
     if (search.new) {
       const fresh = newSessionId()
@@ -324,6 +420,7 @@ function MeetingScreen() {
       syncSession({ data: { sessionId: fresh, title: scenario.title, lines: [], reset: true } }).catch(() => {})
       setSessionId(fresh)
       keepUrl(fresh)
+      if (present) openDeck(present, 0)
       return
     }
 
@@ -337,11 +434,13 @@ function MeetingScreen() {
           if (!session) return
           const utterances: Utterance[] = session.lines.map((l) => ({ id: l.id, speaker: l.speaker, text: l.text, at: l.at, addressed: l.addressed, skipped: !l.addressed }))
           const drafts = Object.fromEntries(session.drafts.map((d) => [d.id, d]))
-          dispatch({ type: 'restore', state: { utterances, results: {}, history: [], seq: 0, pendingTasks: {}, drafts, sessionId: wanted, scenarioId, cursor: 0 } })
+          dispatch({ type: 'restore', state: { utterances, results: {}, history: [], seq: 0, pendingTasks: {}, drafts, focus: null, sessionId: wanted, scenarioId, cursor: 0 } })
           seq.current = utterances.length
           synced.current = utterances.length
+          if (present) openDeck(present, 0)
         })
         .catch(() => {})
+      if (present) keepUrl(wanted)
       return
     }
 
@@ -351,19 +450,20 @@ function MeetingScreen() {
       if (SCENARIOS.some((s) => s.id === saved.scenarioId)) setScenarioId(saved.scenarioId)
       setCursor(saved.cursor)
       setSessionId(saved.sessionId)
-      if (!wanted) keepUrl(saved.sessionId)
+      if (!wanted || present) keepUrl(saved.sessionId)
     } else {
       const fresh = newSessionId()
       setSessionId(fresh)
       keepUrl(fresh)
     }
+    if (present) openDeck(present, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => {
     if (!restored.current || !sessionId) return
     try {
-      const { utterances, results, history, seq: s, pendingTasks, drafts } = state
-      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, drafts, sessionId, scenarioId, cursor }
+      const { utterances, results, history, seq: s, pendingTasks, drafts, focus } = state
+      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, drafts, focus, sessionId, scenarioId, cursor }
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
     } catch {
       /* storage full or blocked: the meeting simply is not persisted */
@@ -406,6 +506,11 @@ function MeetingScreen() {
           const c = cardById(h.id)
           return c ? [{ key, kind: 'card', title: c.title, subtitle: FACET_LABEL[h.facet], status: 'done' }] : []
         }
+        if (h.kind === 'presentation') {
+          const d = decks[h.id] ?? deckList.find((x) => x.id === h.id)
+          const total = d ? (Array.isArray(d.slides) ? d.slides.length : d.slides) : 0
+          return d ? [{ key, kind: 'presentation', title: d.title, subtitle: total ? `slajd ${(h.slide ?? 0) + 1} z ${total}` : undefined, status: 'done' }] : []
+        }
         const e = state.results[h.id]
         if (!e) return []
         const fresh = state.fresh.includes(h.id)
@@ -423,14 +528,15 @@ function MeetingScreen() {
         const title = first?.type === 'document' ? first.title : first?.type === 'note' ? first.note.title : first?.type === 'email_draft' ? first.subject : r.headline || r.question
         return [{ key, kind, title, subtitle: title === r.question ? undefined : r.question, status: fresh ? 'fresh' : 'done' }]
       })
-  }, [state.history, state.current, state.results, state.fresh])
+  }, [state.history, state.current, state.results, state.fresh, decks, deckList])
 
   const openTrayItem = useCallback((item: TrayItem) => {
     const h = stateRef.current.history.find((x) => `${x.kind}-${x.id}-${x.facet}` === item.key)
     if (!h) return
     if (h.kind === 'result') dispatch({ type: 'show', id: h.id })
+    else if (h.kind === 'presentation') openDeck(h.id, h.slide)
     else dispatch({ type: 'pin', kind: h.kind, id: h.id, facet: h.facet })
-  }, [])
+  }, [openDeck])
 
   const send = useCallback(
     (draftId?: string) => {
@@ -469,64 +575,126 @@ function MeetingScreen() {
         return
       }
 
-      // The agent only acts when addressed by name; everything else is context.
-      if (!addressed) {
-        dispatch({ type: 'say', utterance: { ...base, skipped: true } })
-        // Not judged, but it is context: send it to the session.
+      const runNormal = (alreadySaid = false) => {
+        // The agent only acts when addressed by name; everything else is context.
+        if (!addressed) {
+          if (!alreadySaid) dispatch({ type: 'say', utterance: { ...base, skipped: true } })
+          // Not judged, but it is context: send it to the session.
+          setTimeout(() => pushToSession(), 0)
+          return
+        }
+
+        if (!alreadySaid) dispatch({ type: 'say', utterance: { ...base, addressed } })
+        const judgeMode = addressed ? 'command' : 'ambient'
+        const before = stateRef.current.utterances
+        const recent = [...before.slice(-5).map((u) => ({ speaker: u.speaker, text: u.text })), { speaker, text: command }]
+        const thisLine: SessionLine = { id, speaker, text: command, at: base.at, addressed }
+        const tray = trayItems.map((t) => ({ id: t.key, title: t.title }))
+        setTimeout(() => pushToSession([thisLine]), 0)
+
+        if (addressed) dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
+
+        judgeUtterance({ data: { meeting: meetingInfo, recent, mode: judgeMode, trayItems: tray, presentations: deckList.map((d) => ({ id: d.id, title: d.title })) } })
+          .catch((err: unknown) => EMPTY_RESULT(judgeMode, err instanceof Error ? err.message : String(err)))
+          .then((result) => {
+            dispatch({ type: 'judged', utteranceId: id, seq: mySeq, result })
+            if (!addressed) return
+            const intent = result.action === 'show' && result.target === 'person' ? 'person' : result.intent.id
+            switch (intent) {
+              case 'person':
+                dispatch({ type: 'failed', utteranceId: id, error: 'person' })
+                return
+              case 'ui_close':
+              case 'ui_background':
+                dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
+                dispatch({ type: 'dismiss' })
+                return
+              case 'ui_open': {
+                dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
+                const target = result.openTarget?.id ? trayItems.find((t) => t.key === result.openTarget!.id) : trayItems[0]
+                if (target) openTrayItem(target)
+                else dispatch({ type: 'dismiss' })
+                return
+              }
+              case 'ui_present': {
+                dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
+                void refreshDecks().then((fresh) => {
+                  const list = fresh.length ? fresh : deckList
+                  const remembered = stateRef.current.history.find((h) => h.kind === 'presentation')
+                  const pick =
+                    (result.presentation?.id ? list.find((d) => d.id === result.presentation!.id) : undefined) ??
+                    matchDeck(command, list) ??
+                    (list.length === 1 ? list[0] : undefined) ??
+                    (remembered ? list.find((d) => d.id === remembered.id) : undefined)
+                  if (pick) openDeck(pick.id, undefined, id)
+                  else dispatch({ type: 'failed', utteranceId: id, error: list.length ? `Nie wiem, którą prezentację otworzyć. Mam: ${list.map((d) => d.title).join(' · ')}.` : 'Nie ma jeszcze żadnej prezentacji. Dodaj ją w zakładce Presentations.' })
+                })
+                return
+              }
+              case 'ui_send': {
+                dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
+                const latest = Object.values(stateRef.current.drafts)
+                  .filter((d) => d.status !== 'sent')
+                  .sort((a, b) => b.createdAt - a.createdAt)[0]
+                send(latest?.id)
+                return
+              }
+              default:
+                break
+            }
+            // Everything else: the agent decides which tools to use.
+            return askAgent({ data: { sessionId, request: command, lines: [thisLine] } })
+              .then(({ jobId }) => dispatch({ type: 'job', utteranceId: id, jobId }))
+              .catch((err: unknown) => dispatch({ type: 'failed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
+          })
+      }
+
+      // Focus mode: every line is first read as a steering command, name or no name.
+      const focus = stateRef.current.focus
+      if (focus) {
+        const deck = decksRef.current[focus.id]
+        const total = deck?.slides.length ?? 0
+        dispatch({ type: 'say', utterance: { ...base, addressed } })
         setTimeout(() => pushToSession(), 0)
+        judgeFocus({ data: { text: command, focus: { kind: 'presentation', title: deck?.title ?? '', position: focus.slide + 1, total, itemTitles: deck?.slides.map((sl) => sl.title) ?? [] } } })
+          .catch(() => ({ command: 'none' as const, target: null }))
+          .then((r) => {
+            const stillFocused = stateRef.current.focus?.id === focus.id
+            if (!stillFocused || r.command === 'none') {
+              // Not a command: addressed lines go the usual way, the rest is context.
+              if (addressed) runNormal(true)
+              else dispatch({ type: 'settle', utteranceId: id })
+              return
+            }
+            dispatch({ type: 'settle', utteranceId: id })
+            const at = stateRef.current.focus?.slide ?? focus.slide
+            switch (r.command) {
+              case 'next':
+                dispatch({ type: 'slide', slide: at + 1, total })
+                break
+              case 'prev':
+                dispatch({ type: 'slide', slide: at - 1, total })
+                break
+              case 'first':
+                dispatch({ type: 'slide', slide: 0, total })
+                break
+              case 'last':
+                dispatch({ type: 'slide', slide: total - 1, total })
+                break
+              case 'goto':
+                if (r.target) dispatch({ type: 'slide', slide: r.target - 1, total })
+                break
+              case 'close':
+                dispatch({ type: 'unfocus' })
+                break
+            }
+          })
         return
       }
 
-      dispatch({ type: 'say', utterance: { ...base, addressed } })
-      const judgeMode = addressed ? 'command' : 'ambient'
-      const before = stateRef.current.utterances
-      const recent = [...before.slice(-5).map((u) => ({ speaker: u.speaker, text: u.text })), { speaker, text: command }]
-      const thisLine: SessionLine = { id, speaker, text: command, at: base.at, addressed }
-      const tray = trayItems.map((t) => ({ id: t.key, title: t.title }))
-      setTimeout(() => pushToSession([thisLine]), 0)
-
-      if (addressed) dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
-
-      judgeUtterance({ data: { meeting: meetingInfo, recent, mode: judgeMode, trayItems: tray } })
-        .catch((err: unknown) => EMPTY_RESULT(judgeMode, err instanceof Error ? err.message : String(err)))
-        .then((result) => {
-          dispatch({ type: 'judged', utteranceId: id, seq: mySeq, result })
-          if (!addressed) return
-          const intent = result.action === 'show' && result.target === 'person' ? 'person' : result.intent.id
-          switch (intent) {
-            case 'person':
-              dispatch({ type: 'failed', utteranceId: id, error: 'person' })
-              return
-            case 'ui_close':
-            case 'ui_background':
-              dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
-              dispatch({ type: 'dismiss' })
-              return
-            case 'ui_open': {
-              dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
-              const target = result.openTarget?.id ? trayItems.find((t) => t.key === result.openTarget!.id) : trayItems[0]
-              if (target) openTrayItem(target)
-              else dispatch({ type: 'dismiss' })
-              return
-            }
-            case 'ui_send': {
-              dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
-              const latest = Object.values(stateRef.current.drafts)
-                .filter((d) => d.status !== 'sent')
-                .sort((a, b) => b.createdAt - a.createdAt)[0]
-              send(latest?.id)
-              return
-            }
-            default:
-              break
-          }
-          // Everything else: the agent decides which tools to use.
-          return askAgent({ data: { sessionId, request: command, lines: [thisLine] } })
-            .then(({ jobId }) => dispatch({ type: 'job', utteranceId: id, jobId }))
-            .catch((err: unknown) => dispatch({ type: 'failed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
-        })
+      runNormal()
     },
-    [meetingInfo, sessionId, trayItems, openTrayItem, pushToSession, send],
+    [meetingInfo, sessionId, trayItems, openTrayItem, pushToSession, send, openDeck, refreshDecks, deckList],
   )
 
   // Poll agent jobs and background report tasks while any are running.
@@ -618,11 +786,23 @@ function MeetingScreen() {
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return
       // A focused button already acts on Space; do not also advance the script.
       if (target && (target.tagName === 'BUTTON' || target.closest('button'))) return
-      if (e.code === 'Space') {
+      const focus = stateRef.current.focus
+      const total = focus ? (decksRef.current[focus.id]?.slides.length ?? 0) : 0
+      if (focus && (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown')) {
+        e.preventDefault()
+        dispatch({ type: 'slide', slide: focus.slide + 1, total })
+      } else if (focus && (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp')) {
+        e.preventDefault()
+        dispatch({ type: 'slide', slide: focus.slide - 1, total })
+      } else if (focus && e.key === 'Home') {
+        dispatch({ type: 'slide', slide: 0, total })
+      } else if (focus && e.key === 'End') {
+        dispatch({ type: 'slide', slide: total - 1, total })
+      } else if (e.code === 'Space') {
         e.preventDefault()
         stepScenario()
       } else if (e.key === 'Escape') {
-        dispatch({ type: 'dismiss' })
+        dispatch({ type: focus ? 'unfocus' : 'dismiss' })
       } else if (e.key === 'd' && !e.metaKey && !e.ctrlKey) {
         setDebug((d) => !d)
       }
@@ -644,14 +824,15 @@ function MeetingScreen() {
   const currentPerson = state.current?.kind === 'person' ? personCardById(state.current.id) : undefined
   const currentEntry = state.current?.kind === 'result' ? state.results[state.current.id] : undefined
   const entryVisible = currentEntry && !(currentEntry.status === 'error' && (currentEntry.error === 'person' || currentEntry.error === 'ui'))
-  const showing = Boolean(state.current && (currentCard || currentPerson || entryVisible))
+  const focusDeck = state.focus ? decks[state.focus.id] : undefined
+  const showing = Boolean(state.focus) || Boolean(state.current && (currentCard || currentPerson || entryVisible))
   const trigger = state.current ? state.utterances.find((u) => u.id === state.current!.utteranceId) : undefined
   const triggeredBy = trigger ? { speaker: trigger.speaker, text: trigger.text } : undefined
   const live = listening || playing
   const transcript = useMemo(() => toLines(state.utterances), [state.utterances])
 
   const orbState: OrbState = state.thinking > 0 ? 'thinking' : state.armed ? 'speaking' : live ? 'listening' : 'idle'
-  const status = state.thinking > 0 ? 'Sprawdzam' : state.armed ? `${ASSISTANT_NAME} słucha` : speech.status === 'connecting' ? 'Łączę' : live ? `Czekam na „${ASSISTANT_NAME}”` : 'Gotowy'
+  const status = state.focus ? 'Prezentacja' : state.thinking > 0 ? 'Sprawdzam' : state.armed ? `${ASSISTANT_NAME} słucha` : speech.status === 'connecting' ? 'Łączę' : live ? `Czekam na „${ASSISTANT_NAME}”` : 'Gotowy'
   const micUnsupported = speech.status === 'unsupported'
   const toggleMic = () => (listening ? speech.stop() : void speech.start())
 
@@ -666,8 +847,8 @@ function MeetingScreen() {
           <ArrowLeftIcon className="size-4" /> Dashboard
         </Link>
 
-        {/* Left: what moved to the background. */}
-        <Tray items={trayItems} onOpen={openTrayItem} className="absolute top-1/2 left-4 z-20 w-56 -translate-y-1/2 md:left-6" />
+        {/* Left: what moved to the background. Hidden in focus mode: the slides own the screen. */}
+        {!state.focus && <Tray items={trayItems} onOpen={openTrayItem} className="absolute top-1/2 left-4 z-20 w-56 -translate-y-1/2 md:left-6" />}
 
         {/* The orb: centre stage when idle, docked at the top while something is shown. */}
         <div
@@ -715,7 +896,19 @@ function MeetingScreen() {
           </div>
         </div>
 
-        {showing && state.current && (
+        {state.focus && (
+          <div className="absolute inset-0 px-6 pt-14 pb-6 md:px-10">
+            <PresentationView
+              deck={focusDeck}
+              slide={state.focus.slide}
+              onMove={(index) => dispatch({ type: 'slide', slide: index, total: focusDeck?.slides.length ?? 0 })}
+              onClose={() => dispatch({ type: 'unfocus' })}
+              className="mx-auto h-full max-w-7xl animate-in fade-in duration-500"
+            />
+          </div>
+        )}
+
+        {showing && !state.focus && state.current && (
           <div key={`${state.current.kind}-${state.current.id}-${state.current.facet}-${state.current.seq}`} className={cn('absolute inset-0 overflow-y-auto px-6 pt-16 pb-8 md:px-10', trayItems.length > 0 && 'md:pl-[16.5rem]')}>
             <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-3 duration-500 delay-150 fill-mode-both">
               <div className="mb-2 flex justify-end">

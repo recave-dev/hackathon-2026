@@ -1,6 +1,8 @@
 import { FACET_HINT, KNOWLEDGE_CARDS, type Facet } from '../demo/knowledge.ts'
 import { PEOPLE_CARDS } from '../demo/people.ts'
 import { INTENTS, type Intent } from '../lib/intents.ts'
+import { matchDeck } from '../lib/slides.ts'
+import { askJev, jevTransport, type JevChoice, type JevNoul, type JevTransport } from './jev.ts'
 
 /**
  * Server-only: decides what the meeting screen should show for the latest
@@ -30,6 +32,8 @@ export interface RelevanceInput {
   mode?: JudgeMode
   /** Things currently in the tray, so "otwórz raport" can be resolved to one of them. */
   trayItems?: { id: string; title: string }[]
+  /** Stored presentations, so "otwórz prezentację o budżecie" can be resolved to one of them. */
+  presentations?: { id: string; title: string }[]
 }
 
 export type RelevanceAction = 'show' | 'mention' | 'none'
@@ -51,6 +55,8 @@ export interface RelevanceResult {
   intent: { id: Intent; confidence: number }
   /** Command mode with tray items: which tray item an "open" request refers to. */
   openTarget?: { id: string | null; confidence: number }
+  /** Command mode with stored presentations: which deck an "open the presentation" request refers to. */
+  presentation?: { id: string | null; confidence: number }
   action: RelevanceAction
   /** What `show` refers to: `topic.id` for a card, `person.id` for a person. */
   target: RelevanceTarget | null
@@ -95,21 +101,9 @@ function decide(mode: JudgeMode, s: Scores): { action: RelevanceAction; target: 
   return { action: 'none', target: null }
 }
 
-type Transport = { via: 'openrouter'; apiKey: string; model: string } | { via: 'typesafe'; apiKey: string }
-
-function transport(): Transport | null {
-  const openrouter = process.env.OPENROUTER_API_KEY?.trim()
-  const typesafe = process.env.TYPESAFE_API_KEY?.trim()
-  const model = process.env.JEV_MODEL?.trim() || 'typesafe/jev-1.13'
-  if (openrouter) return { via: 'openrouter', apiKey: openrouter, model }
-  if (typesafe?.startsWith('sk-or-')) return { via: 'openrouter', apiKey: typesafe, model }
-  if (typesafe) return { via: 'typesafe', apiKey: typesafe }
-  return null
-}
-
 export async function detectRelevance(input: RelevanceInput): Promise<RelevanceResult> {
   const latest = input.recent.at(-1)
-  const t = transport()
+  const t = jevTransport()
   if (!latest || !t) return fallback(input, 0)
   const started = performance.now()
   try {
@@ -191,52 +185,37 @@ function buildRequest(input: RelevanceInput, mode: JudgeMode) {
           },
         }
       : {}),
+    ...(input.presentations?.length
+      ? {
+          presentation: {
+            type: 'choice' as const,
+            instructions: 'If latest_utterance asks to open or show a presentation / slides, which stored deck is meant? Match by topic words in the title. Choose none if it is not such a request or no deck fits.',
+            criteria: { ...Object.fromEntries(input.presentations.slice(0, 30).map((p) => [p.id, p.title])), none: 'Not a request to open one of these presentations.' } as Record<string, string>,
+          },
+        }
+      : {}),
   }
 
   return { state, questions }
 }
 
-interface ChoiceAnswer {
-  type: 'choice'
-  choice: string
-  confidence?: number
-  probabilities?: Record<string, number>
-}
+type ChoiceAnswer = JevChoice
 
 interface JevAnswers {
-  needs_info: { type: 'noul'; noul: number }
-  asks_person: { type: 'noul'; noul: number }
+  needs_info: JevNoul
+  asks_person: JevNoul
   person: ChoiceAnswer
   topic: ChoiceAnswer
   facet: ChoiceAnswer
   intent: ChoiceAnswer
   open_target?: ChoiceAnswer
+  presentation?: ChoiceAnswer
 }
 
-async function withJev(input: RelevanceInput, t: Transport, started: number): Promise<RelevanceResult> {
+async function withJev(input: RelevanceInput, t: JevTransport, started: number): Promise<RelevanceResult> {
   const mode: JudgeMode = input.mode ?? 'ambient'
   const { state, questions } = buildRequest(input, mode)
-  let answers: JevAnswers
-  let model: string
-
-  if (t.via === 'openrouter') {
-    const res = await fetch('https://openrouter.ai/api/alpha/decisions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${t.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: t.model, state, questions }),
-      signal: AbortSignal.timeout(6000),
-    })
-    if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${(await res.text()).slice(0, 200)}`)
-    const body = (await res.json()) as { model: string; answers: JevAnswers }
-    answers = body.answers
-    model = body.model
-  } else {
-    const { TypeSafeClient } = await import('@typesafe-ai/sdk')
-    const client = new TypeSafeClient({ apiKey: t.apiKey, timeout: 4000, retry: { maxRetries: 0 } })
-    const res = await client.systemOne({ state, questions })
-    answers = res.answers as unknown as JevAnswers
-    model = res.model
-  }
+  const { answers, model } = await askJev<JevAnswers>(t, state, questions, 6000)
 
   const pick = (a: ChoiceAnswer) => {
     const id = a.choice === 'none' ? null : a.choice
@@ -249,6 +228,13 @@ async function withJev(input: RelevanceInput, t: Transport, started: number): Pr
   const facet = (FACETS.includes(answers.facet.choice as Facet) ? answers.facet.choice : 'general') as Facet
   const intentId = (INTENTS.some((i) => i.id === answers.intent.choice) ? answers.intent.choice : 'ask') as Intent
   const openTarget = answers.open_target ? { id: answers.open_target.choice === 'none' ? null : answers.open_target.choice, confidence: answers.open_target.confidence ?? 0 } : undefined
+  let presentation: RelevanceResult['presentation']
+  if (answers.presentation) {
+    const known = input.presentations?.find((p) => p.id === answers.presentation!.choice)
+    // Jev picks the deck; the title matcher is the tie-breaker when it abstains.
+    const byTitle = known ? undefined : matchDeck(input.recent.at(-1)!.text, input.presentations ?? [])
+    presentation = { id: known?.id ?? byTitle?.id ?? null, confidence: known ? (answers.presentation.confidence ?? 0) : byTitle ? 0.5 : 0 }
+  }
 
   const scores: Scores = {
     needsInfo: answers.needs_info.noul,
@@ -272,11 +258,13 @@ async function withJev(input: RelevanceInput, t: Transport, started: number): Pr
     facet: { id: facet, confidence: answers.facet.confidence ?? 0 },
     intent: { id: intentId, confidence: answers.intent.confidence ?? 0 },
     openTarget,
+    presentation,
     ...decide(mode, scores),
   }
 }
 
 const INTENT_MARKERS: [Intent, string[]][] = [
+  ['ui_present', ['prezentacj', 'slajd', 'deck']],
   ['ui_send', ['wyślij', 'wysyłaj', 'wysłać', 'wysylaj']],
   ['ui_background', ['do tła', 'odłóż', 'na później', 'wrócimy do tego', 'zostaw to']],
   ['ui_open', ['otwórz', 'pokaż ten', 'pokaż tę', 'wróć do', 'co z tym']],
@@ -363,6 +351,12 @@ export function fallback(input: RelevanceInput, elapsedMs: number): RelevanceRes
   }
   if (intent === 'person' && !person.id) intent = 'ask'
 
+  let presentation: RelevanceResult['presentation']
+  if (input.presentations?.length) {
+    const hit = matchDeck(latest, input.presentations)
+    presentation = { id: hit?.id ?? null, confidence: hit ? 0.7 : 0 }
+  }
+
   let openTarget: RelevanceResult['openTarget']
   if (input.trayItems?.length) {
     const hit = input.trayItems.find((t) => t.title.toLowerCase().split(/[^\p{L}\p{N}]+/u).some((w) => w.length > 3 && latest.includes(w)))
@@ -379,6 +373,7 @@ export function fallback(input: RelevanceInput, elapsedMs: number): RelevanceRes
     facet: { id: facet, confidence: facetHits > 0 ? 0.8 : 0.3 },
     intent: { id: intent, confidence: 0.6 },
     openTarget,
+    presentation,
     ...decide(mode, scores),
   }
 }

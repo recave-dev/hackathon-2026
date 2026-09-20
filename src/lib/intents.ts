@@ -5,7 +5,7 @@
  * client, so it must stay free of server-only imports.
  */
 
-export type Intent = 'person' | 'ui_close' | 'ui_background' | 'ui_open' | 'ui_send' | 'ask'
+export type Intent = 'person' | 'ui_close' | 'ui_background' | 'ui_open' | 'ui_present' | 'ui_send' | 'ask'
 
 export interface IntentSpec {
   id: Intent
@@ -20,6 +20,7 @@ export const INTENTS: IntentSpec[] = [
   { id: 'ui_close', hint: 'Tells the assistant to hide, close or clear what is on the screen: "schowaj", "zamknij", "dzięki, to wszystko", "wystarczy".', label: 'Chowam' },
   { id: 'ui_background', hint: 'Tells the assistant to put the current thing aside for later / into the background / to the side: "odłóż to", "przenieś do tła", "zostaw na później", "wrócimy do tego".', label: 'Odkładam' },
   { id: 'ui_open', hint: 'Tells the assistant to bring back something it showed or prepared earlier: "otwórz raport", "pokaż tę notatkę", "wróć do wykresu", "co z tym mailem".', label: 'Otwieram' },
+  { id: 'ui_present', hint: 'Asks to open, show or start a presentation, slides or a deck: "otwórz prezentację o budżecie", "pokaż slajdy z przeglądu kwartału", "odpal prezentację Alfa".', label: 'Otwieram prezentację' },
   { id: 'ui_send', hint: 'Confirms sending the prepared email: "wyślij", "wysyłaj", "możesz wysłać", "ok, wyślij to".', label: 'Wysyłam' },
   {
     id: 'ask',
