@@ -1,15 +1,16 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeftIcon, RotateCcwIcon, SendIcon, XIcon } from 'lucide-react'
+import { ArrowLeftIcon, RotateCcwIcon, SendIcon, SparklesIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react'
 
 import { AgentCardView, AgentErrorView, AgentLoadingView } from '@/components/meeting/agent-card'
 import { EmailSentView } from '@/components/meeting/email-sent-card'
+import { FitToScreen } from '@/components/meeting/fit-to-screen'
 import { KnowledgeCardView } from '@/components/meeting/knowledge-card'
 import { PersonCardView } from '@/components/meeting/person-card'
 import { PresentationView } from '@/components/meeting/presentation-view'
 import { ReportCardView } from '@/components/meeting/report-card'
 import { TranscriptRail, shownId, type Utterance } from '@/components/meeting/transcript-rail'
-import { Tray, type TrayItem } from '@/components/meeting/tray'
+import type { TrayItem } from '@/components/meeting/tray'
 import { Button } from '@/components/ui/button'
 import { FACET_LABEL, SCENARIOS, cardById, type Facet } from '@/demo/knowledge'
 import { personCardById } from '@/demo/people'
@@ -353,6 +354,7 @@ function MeetingScreen() {
   const stateRef = useRef(state)
   stateRef.current = state
   const synced = useRef(0)
+  const stackRef = useRef<HTMLDivElement>(null)
 
   // Company presentations: the list for Jev to pick from, full decks once opened.
   const [deckList, setDeckList] = useState<DeckSummary[]>([])
@@ -530,6 +532,15 @@ function MeetingScreen() {
       })
   }, [state.history, state.current, state.results, state.fresh, decks, deckList])
 
+  const freshItems = useMemo(() => trayItems.filter((t) => t.status === 'fresh'), [trayItems])
+
+  /** Moves the page stack by whole screens; the room says "przesuń w górę" instead of touching anything. */
+  const scrollPages = useCallback((direction: -1 | 1) => {
+    const el = stackRef.current
+    if (!el) return
+    el.scrollBy({ top: direction * el.clientHeight, behavior: 'smooth' })
+  }, [])
+
   const openTrayItem = useCallback((item: TrayItem) => {
     const h = stateRef.current.history.find((x) => `${x.kind}-${x.id}-${x.facet}` === item.key)
     if (!h) return
@@ -599,32 +610,32 @@ function MeetingScreen() {
         const tray = trayItems.map((t) => ({ id: t.key, title: t.title }))
         setTimeout(() => pushToSession([thisLine]), 0)
 
-        if (addressed) dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
-
         judgeUtterance({ data: { meeting: meetingInfo, recent, mode: judgeMode, trayItems: tray, presentations: deckList.map((d) => ({ id: d.id, title: d.title })) } })
           .catch((err: unknown) => EMPTY_RESULT(judgeMode, err instanceof Error ? err.message : String(err)))
           .then((result) => {
             dispatch({ type: 'judged', utteranceId: id, seq: mySeq, result })
             if (!addressed) return
-            const intent = result.action === 'show' && result.target === 'person' ? 'person' : result.intent.id
+            // A person Jev could name is on screen already; a person it could not name goes to the agent, which can search.
+            const intent = result.action === 'show' && result.target === 'person' ? 'person' : result.intent.id === 'person' ? 'ask' : result.intent.id
+            // Screen commands and person lookups need no result page; only the agent gets one.
             switch (intent) {
               case 'person':
-                dispatch({ type: 'failed', utteranceId: id, error: 'person' })
                 return
               case 'ui_close':
               case 'ui_background':
-                dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
                 dispatch({ type: 'dismiss' })
                 return
               case 'ui_open': {
-                dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
                 const target = result.openTarget?.id ? trayItems.find((t) => t.key === result.openTarget!.id) : trayItems[0]
                 if (target) openTrayItem(target)
                 else dispatch({ type: 'dismiss' })
                 return
               }
+              case 'ui_scroll_up':
+              case 'ui_scroll_down':
+                scrollPages(intent === 'ui_scroll_up' ? -1 : 1)
+                return
               case 'ui_present': {
-                dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
                 void refreshDecks().then((fresh) => {
                   const list = fresh.length ? fresh : deckList
                   const remembered = stateRef.current.history.find((h) => h.kind === 'presentation')
@@ -634,12 +645,14 @@ function MeetingScreen() {
                     (list.length === 1 ? list[0] : undefined) ??
                     (remembered ? list.find((d) => d.id === remembered.id) : undefined)
                   if (pick) openDeck(pick.id, undefined, id)
-                  else dispatch({ type: 'failed', utteranceId: id, error: list.length ? `Nie wiem, którą prezentację otworzyć. Mam: ${list.map((d) => d.title).join(' · ')}.` : 'Nie ma jeszcze żadnej prezentacji. Dodaj ją w zakładce Presentations.' })
+                  else {
+                    dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
+                    dispatch({ type: 'failed', utteranceId: id, error: list.length ? `Nie wiem, którą prezentację otworzyć. Mam: ${list.map((d) => d.title).join(' · ')}.` : 'Nie ma jeszcze żadnej prezentacji. Dodaj ją w zakładce Presentations.' })
+                  }
                 })
                 return
               }
               case 'ui_send': {
-                dispatch({ type: 'failed', utteranceId: id, error: 'ui' })
                 const latest = Object.values(stateRef.current.drafts)
                   .filter((d) => d.status !== 'sent')
                   .sort((a, b) => b.createdAt - a.createdAt)[0]
@@ -649,7 +662,8 @@ function MeetingScreen() {
               default:
                 break
             }
-            // Everything else: the agent decides which tools to use.
+            // Everything else: the agent decides which tools to use. The result page appears now and fills in as it works.
+            dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
             return askAgent({ data: { sessionId, request: command, lines: [thisLine] } })
               .then(({ jobId }) => dispatch({ type: 'job', utteranceId: id, jobId }))
               .catch((err: unknown) => dispatch({ type: 'failed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
@@ -701,7 +715,7 @@ function MeetingScreen() {
 
       runNormal()
     },
-    [meetingInfo, sessionId, trayItems, openTrayItem, pushToSession, send, openDeck, refreshDecks, deckList, navigate],
+    [meetingInfo, sessionId, trayItems, openTrayItem, pushToSession, send, openDeck, refreshDecks, deckList, navigate, scrollPages],
   )
 
   // Poll agent jobs and background report tasks while any are running.
@@ -805,6 +819,9 @@ function MeetingScreen() {
         dispatch({ type: 'slide', slide: 0, total })
       } else if (focus && e.key === 'End') {
         dispatch({ type: 'slide', slide: total - 1, total })
+      } else if (!focus && stackRef.current && (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'ArrowDown' || e.key === 'PageDown')) {
+        e.preventDefault()
+        scrollPages(e.key === 'ArrowUp' || e.key === 'PageUp' ? -1 : 1)
       } else if (e.code === 'Space') {
         e.preventDefault()
         stepScenario()
@@ -827,14 +844,35 @@ function MeetingScreen() {
   }
 
   const last = state.utterances.at(-1)
-  const currentCard = state.current?.kind === 'card' ? cardById(state.current.id) : undefined
-  const currentPerson = state.current?.kind === 'person' ? personCardById(state.current.id) : undefined
-  const currentEntry = state.current?.kind === 'result' ? state.results[state.current.id] : undefined
-  const entryVisible = currentEntry && !(currentEntry.status === 'error' && (currentEntry.error === 'person' || currentEntry.error === 'ui'))
+  /** Whether a history entry has something to put on a page. */
+  const renderable = useCallback(
+    (h: Shown): boolean => {
+      if (h.kind === 'card') return Boolean(cardById(h.id))
+      if (h.kind === 'person') return Boolean(personCardById(h.id))
+      if (h.kind === 'presentation') return false
+      const e = state.results[h.id]
+      return Boolean(e && !(e.status === 'error' && (e.error === 'person' || e.error === 'ui')))
+    },
+    [state.results],
+  )
+  // The screen is a stack of pages, oldest at the top, the current one at the bottom filling the viewport.
+  const pages = useMemo(() => [...state.history].reverse().filter(renderable), [state.history, renderable])
+  const pageKey = (h: Shown) => `${h.kind}-${h.id}-${h.facet}`
   const focusDeck = state.focus ? decks[state.focus.id] : undefined
-  const showing = Boolean(state.focus) || Boolean(state.current && (currentCard || currentPerson || entryVisible))
-  const trigger = state.current ? state.utterances.find((u) => u.id === state.current!.utteranceId) : undefined
-  const triggeredBy = trigger ? { speaker: trigger.speaker, text: trigger.text } : undefined
+  const showing = Boolean(state.focus) || Boolean(state.current && renderable(state.current))
+  const currentKey = state.current ? `${pageKey(state.current)}-${state.current.seq}` : ''
+  // A new page always lands at the bottom: bring it into view, previous pages move up off screen.
+  useEffect(() => {
+    if (!currentKey) return
+    const el = stackRef.current
+    if (!el) return
+    const id = window.requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }))
+    return () => window.cancelAnimationFrame(id)
+  }, [currentKey, pages.length])
+  const triggeredFor = (h: Shown) => {
+    const u = state.utterances.find((x) => x.id === h.utteranceId)
+    return u ? { speaker: u.speaker, text: u.text } : undefined
+  }
   const live = listening || playing
   const transcript = useMemo(() => toLines(state.utterances), [state.utterances])
 
@@ -854,8 +892,22 @@ function MeetingScreen() {
           <ArrowLeftIcon className="size-4" /> Dashboard
         </Link>
 
-        {/* Left: what moved to the background. Hidden in focus mode: the slides own the screen. */}
-        {!state.focus && <Tray items={trayItems} onOpen={openTrayItem} className="absolute top-1/2 left-4 z-20 w-56 -translate-y-1/2 md:left-6" />}
+        {/* Background work that finished while something else was on screen: one tap or "Bolek, otwórz raport" brings it up. */}
+        {!state.focus && freshItems.length > 0 && (
+          <div className="absolute top-4 right-4 z-30 flex flex-col items-end gap-2 md:right-6">
+            {freshItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => openTrayItem(item)}
+                className="flex max-w-xs items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm text-foreground shadow-sm outline-none animate-in fade-in slide-in-from-top-2 hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                <SparklesIcon className="size-3.5 shrink-0 text-primary" />
+                <span className="truncate">Gotowe: {item.title}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* The orb: centre stage when idle, docked at the top while something is shown. */}
         <div
@@ -915,24 +967,36 @@ function MeetingScreen() {
           </div>
         )}
 
+        {/* Pages: one viewport each, snapping. Scroll up for earlier answers; a new one pushes the rest off the top. */}
         {showing && !state.focus && state.current && (
-          <div key={`${state.current.kind}-${state.current.id}-${state.current.facet}-${state.current.seq}`} className={cn('absolute inset-0 overflow-y-auto px-6 pt-16 pb-8 md:px-10', trayItems.length > 0 && 'md:pl-[16.5rem]')}>
-            <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-3 duration-500 delay-150 fill-mode-both">
-              <div className="mb-2 flex justify-end">
-                <Button variant="ghost" size="sm" onClick={() => dispatch({ type: 'dismiss' })} title={`Albo powiedz „${ASSISTANT_NAME}, dzięki”`}>
-                  <XIcon /> Schowaj
-                </Button>
-              </div>
-              {currentCard && <KnowledgeCardView card={currentCard} facet={state.current.facet} triggeredBy={triggeredBy} />}
-              {currentPerson && <PersonCardView person={currentPerson} triggeredBy={triggeredBy} onOpenCard={(id) => dispatch({ type: 'pin', kind: 'card', id })} />}
-              {currentEntry?.status === 'loading' && <AgentLoadingView question={currentEntry.question} activity={currentEntry.activity} steps={currentEntry.steps} triggeredBy={triggeredBy} />}
-              {currentEntry?.status === 'error' && entryVisible && <AgentErrorView question={currentEntry.question} error={currentEntry.error} />}
-              {currentEntry?.status === 'done' && currentEntry.result.kind === 'agent' && (
-                <AgentCardView result={currentEntry.result} transcript={transcript} drafts={state.drafts} onSendDraft={(id) => send(id)} sendingDraft={sendingDraft} triggeredBy={triggeredBy} debug={debug} />
-              )}
-              {currentEntry?.status === 'done' && currentEntry.result.kind === 'task' && <ReportCardView task={currentEntry.result} triggeredBy={triggeredBy} debug={debug} />}
-              {currentEntry?.status === 'done' && currentEntry.result.kind === 'sent' && <EmailSentView draft={currentEntry.result.draft} triggeredBy={triggeredBy} />}
-            </div>
+          <div ref={stackRef} className="absolute inset-0 snap-y snap-mandatory overflow-y-auto px-6 md:px-10">
+            {pages.map((h) => {
+              const card = h.kind === 'card' ? cardById(h.id) : undefined
+              const person = h.kind === 'person' ? personCardById(h.id) : undefined
+              const entry = h.kind === 'result' ? state.results[h.id] : undefined
+              const triggeredBy = triggeredFor(h)
+              const isCurrent = state.current && sameTarget(state.current, h)
+              return (
+                <section key={pageKey(h)} className="h-full snap-start pt-16 pb-6" aria-current={isCurrent ? 'true' : undefined}>
+                  <FitToScreen className={cn('mx-auto max-w-6xl', isCurrent && 'animate-in fade-in slide-in-from-bottom-3 duration-500 delay-150 fill-mode-both')}>
+                    <div className="mb-2 flex justify-end">
+                      <Button variant="ghost" size="sm" onClick={() => dispatch({ type: 'dismiss' })} title={`Albo powiedz „${ASSISTANT_NAME}, dzięki”`}>
+                        <XIcon /> Schowaj
+                      </Button>
+                    </div>
+                    {card && <KnowledgeCardView card={card} facet={h.facet} triggeredBy={triggeredBy} />}
+                    {person && <PersonCardView person={person} triggeredBy={triggeredBy} onOpenCard={(id) => dispatch({ type: 'pin', kind: 'card', id })} />}
+                    {entry?.status === 'loading' && <AgentLoadingView question={entry.question} activity={entry.activity} steps={entry.steps} triggeredBy={triggeredBy} />}
+                    {entry?.status === 'error' && <AgentErrorView question={entry.question} error={entry.error} />}
+                    {entry?.status === 'done' && entry.result.kind === 'agent' && (
+                      <AgentCardView result={entry.result} transcript={transcript} drafts={state.drafts} onSendDraft={(id) => send(id)} sendingDraft={sendingDraft} triggeredBy={triggeredBy} debug={debug} />
+                    )}
+                    {entry?.status === 'done' && entry.result.kind === 'task' && <ReportCardView task={entry.result} triggeredBy={triggeredBy} debug={debug} />}
+                    {entry?.status === 'done' && entry.result.kind === 'sent' && <EmailSentView draft={entry.result.draft} triggeredBy={triggeredBy} />}
+                  </FitToScreen>
+                </section>
+              )
+            })}
           </div>
         )}
 

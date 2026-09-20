@@ -5,7 +5,7 @@
  * client, so it must stay free of server-only imports.
  */
 
-export type Intent = 'person' | 'ui_close' | 'ui_background' | 'ui_open' | 'ui_present' | 'ui_send' | 'ask'
+export type Intent = 'person' | 'ui_close' | 'ui_background' | 'ui_open' | 'ui_present' | 'ui_scroll_up' | 'ui_scroll_down' | 'ui_send' | 'ask'
 
 export interface IntentSpec {
   id: Intent
@@ -21,6 +21,8 @@ export const INTENTS: IntentSpec[] = [
   { id: 'ui_background', hint: 'Tells the assistant to put the current thing aside for later / into the background / to the side: "odłóż to", "przenieś do tła", "zostaw na później", "wrócimy do tego".', label: 'Odkładam' },
   { id: 'ui_open', hint: 'Tells the assistant to bring back something it showed or prepared earlier: "otwórz raport", "pokaż tę notatkę", "wróć do wykresu", "co z tym mailem".', label: 'Otwieram' },
   { id: 'ui_present', hint: 'Asks to open, show or start a presentation, slides or a deck: "otwórz prezentację o budżecie", "pokaż slajdy z przeglądu kwartału", "odpal prezentację Alfa".', label: 'Otwieram prezentację' },
+  { id: 'ui_scroll_up', hint: 'Tells the assistant to scroll the screen up / go back to what was shown before: "przesuń w górę", "scroll do góry", "przewiń wyżej", "wróć wyżej", "pokaż poprzednią odpowiedź".', label: 'Przewijam w górę' },
+  { id: 'ui_scroll_down', hint: 'Tells the assistant to scroll the screen down / forward to the newer answer: "przesuń w dół", "scroll na dół", "przewiń niżej", "wróć na dół", "do najnowszej odpowiedzi".', label: 'Przewijam w dół' },
   { id: 'ui_send', hint: 'Confirms sending the prepared email: "wyślij", "wysyłaj", "możesz wysłać", "ok, wyślij to".', label: 'Wysyłam' },
   {
     id: 'ask',

@@ -265,6 +265,8 @@ async function withJev(input: RelevanceInput, t: JevTransport, started: number):
 
 const INTENT_MARKERS: [Intent, string[]][] = [
   ['ui_present', ['prezentacj', 'slajd', 'deck']],
+  ['ui_scroll_up', ['w górę', 'do góry', 'na górę', 'wyżej', 'w gore', 'do gory']],
+  ['ui_scroll_down', ['w dół', 'na dół', 'niżej', 'w dol', 'na dol']],
   ['ui_send', ['wyślij', 'wysyłaj', 'wysłać', 'wysylaj']],
   ['ui_background', ['do tła', 'odłóż', 'na później', 'wrócimy do tego', 'zostaw to']],
   ['ui_open', ['otwórz', 'pokaż ten', 'pokaż tę', 'wróć do', 'co z tym']],
