@@ -21,6 +21,8 @@ const CASES: [string, string, string?][] = [
   ['przewiń niżej', 'ui_scroll_down'],
   ['ok, wyślij', 'ui_send'],
   ['możesz to wysłać', 'ui_send'],
+  ['wyślij maila do Tomasza Kielara z podsumowaniem spotkania', 'ask'],
+  ['wyślij Tomkowi krótkie podsumowanie', 'ask'],
   ['ile zapłaciliśmy za Pipedrive w sierpniu?', 'ask'],
   ['zrób punkty z tego, co omawialiśmy', 'ask'],
   ['przygotuj raport o wydatkach na narzędzia', 'ask'],

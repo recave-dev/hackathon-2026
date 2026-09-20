@@ -226,7 +226,7 @@ async function withJev(input: RelevanceInput, t: JevTransport, started: number):
   const topic = pick(answers.topic)
   const person = pick(answers.person)
   const facet = (FACETS.includes(answers.facet.choice as Facet) ? answers.facet.choice : 'general') as Facet
-  const intentId = (INTENTS.some((i) => i.id === answers.intent.choice) ? answers.intent.choice : 'ask') as Intent
+  let intentId = (INTENTS.some((i) => i.id === answers.intent.choice) ? answers.intent.choice : 'ask') as Intent
   const openTarget = answers.open_target ? { id: answers.open_target.choice === 'none' ? null : answers.open_target.choice, confidence: answers.open_target.confidence ?? 0 } : undefined
   let presentation: RelevanceResult['presentation']
   if (answers.presentation) {
@@ -235,6 +235,8 @@ async function withJev(input: RelevanceInput, t: JevTransport, started: number):
     const byTitle = known ? undefined : matchDeck(input.recent.at(-1)!.text, input.presentations ?? [])
     presentation = { id: known?.id ?? byTitle?.id ?? null, confidence: known ? (answers.presentation.confidence ?? 0) : byTitle ? 0.5 : 0 }
   }
+  // "Pokaż, co mamy na landingu" reads like a deck to Jev; without a matched deck or the word for one it is a normal request.
+  if (intentId === 'ui_present' && !presentation?.id && !/prezentacj|slajd|deck/i.test(input.recent.at(-1)!.text)) intentId = 'ask'
 
   const scores: Scores = {
     needsInfo: answers.needs_info.noul,

@@ -656,8 +656,12 @@ function MeetingScreen() {
                 const latest = Object.values(stateRef.current.drafts)
                   .filter((d) => d.status !== 'sent')
                   .sort((a, b) => b.createdAt - a.createdAt)[0]
-                send(latest?.id)
-                return
+                if (latest) {
+                  send(latest.id)
+                  return
+                }
+                // Nothing to send yet: "wyślij maila do Tomka…" is a request for a draft, so the agent writes one.
+                break
               }
               default:
                 break

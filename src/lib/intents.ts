@@ -20,10 +20,18 @@ export const INTENTS: IntentSpec[] = [
   { id: 'ui_close', hint: 'Tells the assistant to hide, close or clear what is on the screen: "schowaj", "zamknij", "dzięki, to wszystko", "wystarczy".', label: 'Chowam' },
   { id: 'ui_background', hint: 'Tells the assistant to put the current thing aside for later / into the background / to the side: "odłóż to", "przenieś do tła", "zostaw na później", "wrócimy do tego".', label: 'Odkładam' },
   { id: 'ui_open', hint: 'Tells the assistant to bring back something it showed or prepared earlier: "otwórz raport", "pokaż tę notatkę", "wróć do wykresu", "co z tym mailem".', label: 'Otwieram' },
-  { id: 'ui_present', hint: 'Asks to open, show or start a presentation, slides or a deck: "otwórz prezentację o budżecie", "pokaż slajdy z przeglądu kwartału", "odpal prezentację Alfa".', label: 'Otwieram prezentację' },
+  {
+    id: 'ui_present',
+    hint: 'Asks to open, show or start a presentation, slides or a deck, and says so: "otwórz prezentację o budżecie", "pokaż slajdy z przeglądu kwartału", "odpal prezentację Alfa". Showing a web page, landing page, screenshot, chart or data is ask.',
+    label: 'Otwieram prezentację',
+  },
   { id: 'ui_scroll_up', hint: 'Tells the assistant to scroll the screen up / go back to what was shown before: "przesuń w górę", "scroll do góry", "przewiń wyżej", "wróć wyżej", "pokaż poprzednią odpowiedź".', label: 'Przewijam w górę' },
   { id: 'ui_scroll_down', hint: 'Tells the assistant to scroll the screen down / forward to the newer answer: "przesuń w dół", "scroll na dół", "przewiń niżej", "wróć na dół", "do najnowszej odpowiedzi".', label: 'Przewijam w dół' },
-  { id: 'ui_send', hint: 'Confirms sending the prepared email: "wyślij", "wysyłaj", "możesz wysłać", "ok, wyślij to".', label: 'Wysyłam' },
+  {
+    id: 'ui_send',
+    hint: 'Only confirms sending the email the assistant has already prepared: "wyślij", "wysyłaj", "możesz wysłać", "ok, wyślij to". A request that names a recipient or says what to write ("wyślij maila do Tomka z podsumowaniem") is a new email to draft: choose ask.',
+    label: 'Wysyłam',
+  },
   {
     id: 'ask',
     hint: 'Any other request or question: company facts, numbers, notes from the conversation, drafting an email or document, a chart, a report, a screenshot of a web page, the internet, general knowledge.',
