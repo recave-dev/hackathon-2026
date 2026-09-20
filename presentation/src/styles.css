@@ -27,6 +27,33 @@ body {
   color-scheme: dark;
 }
 
+.deck-control {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-foreground);
+  cursor: pointer;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.deck-control:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--color-foreground) 10%, transparent);
+}
+
+.deck-control:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
+.deck-control:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
 /* Slide element the narrator can point at. The orb flies to it while `data-cue-active` is set. */
 .cue {
   position: relative;

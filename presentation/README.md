@@ -1,44 +1,30 @@
-# Droker · prezentacja na hackathon
+# Droker · prezentacja HackBB 2026
 
-Pitch deck dla tematu #1 (*Zanim zdecydujesz*, patrz [`../docs/hackathon-rules.md`](../docs/hackathon-rules.md)) jako aplikacja [TanStack Start](https://tanstack.com/start). Każdy slajd czyta **Bolek**: głos z xAI Grok Voice, a ten sam orb, który w produkcie stoi na wyświetlaczu sali spotkań, porusza się w rytm głosu i podlatuje do elementu slajdu, o którym akurat mówi.
+Krótka prezentacja webowa na ścieżkę **Wsparcie C-Level**. Osiem slajdów: problem, wartość produktu, dwa techniczne schematy (źródła → Company Graph → Bolek oraz routing wypowiedzi), dwie plansze z filmami demonstracyjnymi i podsumowanie. Bez lektora i bez automatycznych przejść.
+
+## Filmy
+
+Umieść swoje pliki tutaj:
+
+- `public/demos/demo-1.mp4`
+- `public/demos/demo-2.mp4`
+
+Plansze 6 i 7 pokażą odtwarzacze automatycznie po dodaniu plików. Do tego czasu wyświetlają czytelne miejsca na filmy. Jeśli pliki mają inny format lub nazwę, zmień ścieżki w `src/slides/deck.tsx`. Filmów nie ma w repozytorium.
 
 ## Uruchomienie
 
 ```bash
 cd presentation
-cp .env.example .env      # wpisz XAI_API_KEY
 npm install
-npm run dev               # http://localhost:3100
+npm run dev
 ```
 
-Przed występem warto zsyntezować całą narrację do cache (`.cache/tts`, ignorowany przez git), żeby na scenie nic nie czekało na sieć:
+Otwórz `http://localhost:3100`. Prezentacja nie wymaga kluczy API.
 
-```bash
-npm run tts:prewarm
-```
+## Sterowanie i czas
 
-Bez klucza aplikacja działa dalej: Bolek mówi głosem przeglądarki (`speechSynthesis`, `pl-PL`), a wskazywanie elementów opiera się o zdarzenia `onboundary`.
+Strzałki, PageUp/PageDown oraz przyciski w stopce zmieniają slajdy; `Home`/`End` prowadzą do początku/końca, a `F` włącza pełny ekran. Spacja przechodzi do następnego slajdu tylko poza planszami z filmem, aby nie przeskoczyć nagrania. Filmy uruchamia prezenter przyciskiem odtwarzania.
 
-## Sterowanie
+Przy limicie 10 minut i filmach o łącznej długości 7 minut zostają około 3 minuty na sześć krótkich slajdów i przejścia. Slajdy techniczne warto omówić po 20–25 sekund każdy; sprawdź długości rzeczywistych nagrań i przećwicz całość z zegarkiem. Schemat źródeł opisuje import plików demonstracyjnych, a nie działające konektory live.
 
-| Klawisz | Działanie |
-| --- | --- |
-| `→` `Space` `PageDown` | następny slajd |
-| `←` `PageUp` | poprzedni slajd |
-| `Home` / `End` | pierwszy / ostatni slajd |
-| `R` | powtórz narrację slajdu |
-| `P` | pauza / wznów |
-| `A` | automatyczne przejście po narracji (domyślnie włączone) |
-| `V` | lektor włączony / wyłączony |
-| `F` | pełny ekran |
-
-Adres `?s=N` otwiera slajd N.
-
-## Jak to działa
-
-- `src/slides/deck.tsx`: slajdy jako komponenty na stałym kanwasie 1600×900 (`Stage` skaluje go do okna). Element, na który Bolek ma wskazać, owija się w `<Cue id="...">` (albo `<Card cue="...">`).
-- `src/slides/narration.ts`: tekst narracji z markerami `{{cue-id}}` w miejscach, gdzie orb ma podlecieć do elementu; `[pause]` to tag mowy Groka.
-- `src/routes/api/tts.ts` → `src/lib/tts-server.ts`: proxy do `POST https://api.x.ai/v1/tts` z `with_timestamps: true`. Klucz zostaje na serwerze, odpowiedź (mp3 w base64 + czasy znaków) trafia do cache na dysku.
-- `src/lib/narrator.ts`: odtwarza klip przez `<audio>` → `AnalyserNode`; RMS sygnału zasila `levelRef` orba (stąd „rusza się, jak mówi”), offsety markerów mapuje na `graph_times` Groka i odpala cue w momencie wypowiedzenia słowa; postęp znaków zasila napis w pasku.
-- `src/components/orb-pointer.tsx`: orb w spoczynku siedzi obok tytułu, przy cue szuka miejsca obok elementu (lewo / prawo / góra / dół), które nie zasłania innych elementów.
-- `src/orb/`: kopia `NebulaOrb` z głównej aplikacji (three + react-three-fiber, fallback CSS bez WebGL).
+Treść slajdów: `src/slides/deck.tsx`. Wygląd: `src/styles.css`.

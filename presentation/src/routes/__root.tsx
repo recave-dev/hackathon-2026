@@ -9,7 +9,7 @@ export const Route = createRootRoute({
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { name: 'theme-color', content: '#0b0d14' },
-      { title: 'Droker · Zanim zdecydujesz' },
+      { title: 'Droker · Wsparcie C-Level' },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
