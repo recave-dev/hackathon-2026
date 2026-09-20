@@ -1,5 +1,8 @@
 # Bolek — asystent spotkań, który zna kontekst firmy
 
+DEMO
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/2UXgJ4-GpDg/0.jpg)](https://www.youtube.com/watch?v=2UXgJ4-GpDg)
+
 Bolek pomaga osobom zarządzającym podczas spotkania, bez przełączania się między notatkami, fakturami, wiadomościami i kolejnym chatbotem. Gdy ktoś zapyta „Bolek, ile płacimy za Pipedrive?” albo „Jak wyszedł pilot e-Doręczeń?”, na ekranie pojawia się krótka odpowiedź wraz z kontekstem decyzji i źródłami. Asystent potrafi też zebrać ustalenia, porównać opcje, przygotować raport lub szkic e-maila. Wysłanie wiadomości wymaga osobnego potwierdzenia.
 
 To działający prototyp na ścieżkę hackathonu **„Wsparcie C-Level”**. Jego konkretny wycinek to spotkanie i praca po spotkaniu, nie planowanie podróży czy integracja z kalendarzem. W repozytorium jest także wcześniejszy prototyp grafu decyzji związany z tematem „Zanim zdecydujesz”; dostarcza on źródłowego zaplecza dla asystenta, ale nie należy mylić go z pełnym produktem do prognozowania skutków decyzji.
