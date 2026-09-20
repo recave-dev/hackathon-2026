@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeftIcon, RotateCcwIcon, SendIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react'
 
@@ -22,6 +22,7 @@ import { ORB_COLORS } from '@/routes/app/index'
 import {
   askAgent,
   getTask,
+  getSession,
   judgeUtterance,
   pollAgent,
   sendDraft,
@@ -34,7 +35,19 @@ import {
   type TaskResult,
 } from '@/server/meeting-assist'
 
+/** `?new` starts a session with a clean context; `?session=<id>` opens (or keeps) that one. */
+interface MeetingSearch {
+  new?: boolean
+  session?: string
+}
+
 export const Route = createFileRoute('/meeting')({
+  validateSearch: (search: Record<string, unknown>): MeetingSearch => {
+    const out: MeetingSearch = {}
+    if (search.new === true || search.new === 'true' || search.new === 1 || search.new === '1') out.new = true
+    if (typeof search.session === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(search.session)) out.session = search.session
+    return out
+  },
   head: () => ({ meta: [{ title: `${ASSISTANT_NAME} · Spotkanie na żywo` }] }),
   component: MeetingScreen,
 })
@@ -288,21 +301,63 @@ function MeetingScreen() {
   stateRef.current = state
   const synced = useRef(0)
 
-  // Restore the meeting after a reload, then keep saving it.
+  const search = Route.useSearch()
+  const navigate = useNavigate()
+
+  // Which session the room is in, decided once on mount:
+  //  ?new            → a fresh id and an empty context (the dashboard orb, "Nowa sesja");
+  //  ?session=<id>   → that session: the persisted one if it matches, otherwise its transcript from the server;
+  //  nothing         → whatever was persisted (or a fresh id), and the URL is updated to name it.
   const restored = useRef(false)
   useEffect(() => {
     if (restored.current) return
     restored.current = true
+    const keepUrl = (id: string) => void navigate({ to: '/meeting', search: { session: id }, replace: true })
+
+    if (search.new) {
+      const fresh = newSessionId()
+      try {
+        window.localStorage.removeItem(STORAGE_KEY)
+      } catch {
+        /* ignore */
+      }
+      syncSession({ data: { sessionId: fresh, title: scenario.title, lines: [], reset: true } }).catch(() => {})
+      setSessionId(fresh)
+      keepUrl(fresh)
+      return
+    }
+
     const saved = loadPersisted()
+    const wanted = search.session
+    if (wanted && saved?.sessionId !== wanted) {
+      // An earlier session: the transcript and drafts come back, results start empty.
+      setSessionId(wanted)
+      getSession({ data: { sessionId: wanted } })
+        .then((session) => {
+          if (!session) return
+          const utterances: Utterance[] = session.lines.map((l) => ({ id: l.id, speaker: l.speaker, text: l.text, at: l.at, addressed: l.addressed, skipped: !l.addressed }))
+          const drafts = Object.fromEntries(session.drafts.map((d) => [d.id, d]))
+          dispatch({ type: 'restore', state: { utterances, results: {}, history: [], seq: 0, pendingTasks: {}, drafts, sessionId: wanted, scenarioId, cursor: 0 } })
+          seq.current = utterances.length
+          synced.current = utterances.length
+        })
+        .catch(() => {})
+      return
+    }
+
     if (saved) {
       dispatch({ type: 'restore', state: saved })
       seq.current = saved.seq + saved.utterances.length
       if (SCENARIOS.some((s) => s.id === saved.scenarioId)) setScenarioId(saved.scenarioId)
       setCursor(saved.cursor)
       setSessionId(saved.sessionId)
+      if (!wanted) keepUrl(saved.sessionId)
     } else {
-      setSessionId(newSessionId())
+      const fresh = newSessionId()
+      setSessionId(fresh)
+      keepUrl(fresh)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => {
     if (!restored.current || !sessionId) return
@@ -554,7 +609,8 @@ function MeetingScreen() {
     } catch {
       /* ignore */
     }
-  }, [speech, meetingInfo.title])
+    void navigate({ to: '/meeting', search: { session: fresh }, replace: true })
+  }, [speech, meetingInfo.title, navigate])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

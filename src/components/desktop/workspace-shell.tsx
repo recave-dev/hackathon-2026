@@ -1,5 +1,5 @@
 import { Link, useMatchRoute, useMatches } from '@tanstack/react-router'
-import { LayoutDashboardIcon, LibraryIcon, ListChecksIcon, PlugIcon, SmartphoneIcon } from 'lucide-react'
+import { LayoutDashboardIcon, MessagesSquareIcon, PlugIcon, SmartphoneIcon } from 'lucide-react'
 import { Fragment, type ComponentType, type ReactNode } from 'react'
 
 import {
@@ -41,7 +41,7 @@ declare module '@tanstack/react-router' {
 }
 
 type NavItem = {
-  to: '/' | '/decisions' | '/context' | '/connectors'
+  to: '/' | '/sessions' | '/connectors'
   label: string
   icon: ComponentType<{ className?: string }>
   count?: number
@@ -51,13 +51,11 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const state = useDemoState()
   const hydrated = useHydrated()
   const matchRoute = useMatchRoute()
-  const pending = state.decisions.filter((d) => d.status === 'pending').length
   const connected = state.connectors.filter((c) => c.status === 'connected' || c.status === 'paused').length
 
   const items: NavItem[] = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboardIcon },
-    { to: '/decisions', label: 'Decisions', icon: ListChecksIcon, count: pending },
-    { to: '/context', label: 'Context', icon: LibraryIcon, count: state.contexts.length },
+    { to: '/sessions', label: 'Sessions', icon: MessagesSquareIcon },
     { to: '/connectors', label: 'Connectors', icon: PlugIcon, count: connected },
   ]
 

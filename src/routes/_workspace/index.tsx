@@ -35,9 +35,10 @@ function Dashboard() {
         {greetingFor(state.now)}, {firstName(me)}
       </h1>
 
-      {/* Quick session: the orb alone, one click opens a fresh live session. */}
+      {/* Quick session: the orb alone, one click opens a fresh live session with a clean context. */}
       <Link
         to="/meeting"
+        search={{ new: true }}
         className="group flex flex-col items-center gap-6 self-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-8 focus-visible:ring-offset-background"
       >
         <span className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase transition-colors group-hover:text-foreground">Szybka sesja</span>

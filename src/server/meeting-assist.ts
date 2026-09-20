@@ -58,7 +58,7 @@ export const getTask = createServerFn({ method: 'POST' })
 
 export type { AgentResult, AgentStep } from './agent.ts'
 export type { Attachment, ChartSpec } from './tools.ts'
-export type { ContextDigest, EmailDraft, SessionDoc, SessionLine } from './session.ts'
+export type { ContextDigest, EmailDraft, Session, SessionDoc, SessionLine, SessionSummary } from './session.ts'
 
 const cleanLines = (input: unknown) =>
   (Array.isArray(input) ? input : [])
@@ -82,6 +82,21 @@ export const syncSession = createServerFn({ method: 'POST' })
     const added = appendLines(session, data.lines)
     void refreshDigest(session)
     return { added, lines: session.lines.length, digest: session.digest }
+  })
+
+/** Every meeting session Bolek has seen, newest activity first. */
+export const listSessions = createServerFn({ method: 'GET' }).handler(async () => {
+  const { listSessions } = await import('./session.ts')
+  return listSessions()
+})
+
+/** One session with its transcript, so the room can pick it up again. Null when it never existed. */
+export const getSession = createServerFn({ method: 'POST' })
+  .inputValidator((input: { sessionId: string }) => ({ sessionId: clean(input?.sessionId, 80) }))
+  .handler(async ({ data }) => {
+    const { listSessions, loadSession } = await import('./session.ts')
+    if (!data.sessionId || !listSessions().some((s) => s.id === data.sessionId)) return null
+    return loadSession(data.sessionId)
   })
 
 /** Starts Bolek's agent on a request within the meeting session; poll `pollAgent` for progress and the result. */

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 /**
@@ -111,6 +111,65 @@ export function appendLines(session: Session, lines: SessionLine[]): number {
     saveSession(session)
   }
   return added
+}
+
+/** What the Sessions list needs: no transcript, just the shape of the meeting. */
+export interface SessionSummary {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  lineCount: number
+  /** How many lines were addressed to the assistant. */
+  askedCount: number
+  summary: string | null
+  firstLine: string | null
+  documents: number
+  drafts: number
+  sent: number
+}
+
+const isSession = (v: unknown): v is Session => typeof v === 'object' && v !== null && typeof (v as Session).id === 'string' && Array.isArray((v as Session).lines)
+
+export function summarize(session: Session): SessionSummary {
+  return {
+    id: session.id,
+    title: session.title,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    lineCount: session.lines.length,
+    askedCount: session.lines.filter((l) => l.addressed).length,
+    summary: session.digest?.summary ?? null,
+    firstLine: session.lines[0]?.text ?? null,
+    documents: session.documents.length,
+    drafts: session.drafts.length,
+    sent: session.drafts.filter((d) => d.status === 'sent').length,
+  }
+}
+
+/** Every session on disk (and in memory), newest activity first. */
+export function listSessions(): SessionSummary[] {
+  const ids = new Set<string>(cache.keys())
+  try {
+    for (const f of readdirSync(DIR)) if (f.endsWith('.json')) ids.add(f.slice(0, -5))
+  } catch {
+    /* no sessions yet */
+  }
+  const out: SessionSummary[] = []
+  for (const id of ids) {
+    const cached = cache.get(id)
+    let session: Session | undefined = cached
+    if (!session) {
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(fileFor(id), 'utf8'))
+        if (isSession(parsed)) session = parsed
+      } catch {
+        session = undefined
+      }
+    }
+    if (session && session.id === id) out.push(summarize(session))
+  }
+  return out.sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 export function clearSession(id: string): void {
