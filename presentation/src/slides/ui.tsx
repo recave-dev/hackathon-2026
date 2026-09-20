@@ -15,12 +15,12 @@ export interface SlideFrameProps {
 /** Standard content slide: kicker, title, optional lede, then the body. */
 export const SlideFrame = ({ kicker, title, lede, className, children }: SlideFrameProps) => (
   <div className={cx('slide-enter absolute inset-0 flex flex-col px-24 pt-20 pb-16', className)}>
-    <header className="flex flex-col gap-3 pr-[220px]">
+    <header data-obstacle className="flex flex-col gap-3 pr-[220px]">
       {kicker && <span className="text-[13px] font-semibold tracking-[0.22em] text-accent uppercase">{kicker}</span>}
       <h1 className="m-0 text-[54px] leading-[1.05] font-semibold tracking-tight text-balance">{title}</h1>
       {lede && <p className="m-0 mt-1 max-w-[1100px] text-[22px] leading-snug text-muted">{lede}</p>}
     </header>
-    <div className="relative mt-12 flex-1">{children}</div>
+    <div className="relative flex flex-1 flex-col justify-center pt-8 pb-10">{children}</div>
   </div>
 )
 

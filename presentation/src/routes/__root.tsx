@@ -11,7 +11,10 @@ export const Route = createRootRoute({
       { name: 'theme-color', content: '#0b0d14' },
       { title: 'Droker · Zanim zdecydujesz' },
     ],
-    links: [{ rel: 'stylesheet', href: appCss }],
+    links: [
+      { rel: 'stylesheet', href: appCss },
+      { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+    ],
   }),
   shellComponent: RootDocument,
   component: Outlet,

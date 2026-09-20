@@ -269,7 +269,7 @@ const Bolek = () => (
         </Card>
       </div>
 
-      <Cue id="card" className="flex flex-col gap-5 rounded-2xl border border-accent/40 bg-surface p-8">
+      <Cue id="card" className="flex flex-col gap-5 self-start rounded-2xl border border-accent/40 bg-surface p-8">
         <div className="flex items-center justify-between">
           <span className="text-[13px] tracking-[0.16em] text-accent uppercase">Karta z grafu · Pipedrive · koszt</span>
           <Pill tone="ok">6 źródeł</Pill>

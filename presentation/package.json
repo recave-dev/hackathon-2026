@@ -11,7 +11,7 @@
     "start": "node .output/server/index.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "tts:prewarm": "node --env-file=.env scripts/prewarm-tts.ts"
+    "tts:prewarm": "node --experimental-strip-types --env-file=.env scripts/prewarm-tts.ts"
   },
   "dependencies": {
     "@react-three/fiber": "^9.7.0",
