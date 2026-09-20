@@ -15,7 +15,8 @@ export interface OrbHome {
 
 /** Content slides keep the top-right corner free: the orb hovers beside the title. */
 export const DEFAULT_HOME: OrbHome = { x: STAGE_W - 96 - 150, y: 56, size: 150 }
-export const CENTER_HOME: OrbHome = { x: STAGE_W / 2 - 170, y: 250, size: 340 }
+/** Title and closing slides: a large orb above the centred text block. */
+export const CENTER_HOME: OrbHome = { x: STAGE_W / 2 - 170, y: 110, size: 340 }
 
 const POINT_SIZE = 104
 const GAP = 24
