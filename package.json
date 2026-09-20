@@ -27,6 +27,8 @@
     "ask": "node --env-file=.env scripts/ask.ts",
     "agent:eval": "node --env-file=.env scripts/agent-eval.ts",
     "focus:eval": "node --env-file=.env scripts/focus-eval.ts",
+    "import:bielsko": "node scripts/import-bielsko.ts",
+    "demo:poster": "node scripts/make-poster.ts",
     "intent:eval": "node --env-file=.env scripts/intent-eval.ts"
   },
   "dependencies": {
