@@ -165,20 +165,32 @@ const findContact: ToolDef = {
 
 // ---------- world ----------
 
+export interface WebLookup {
+  summary: string
+  facts: string[]
+  sources: WebSource[]
+  model: string
+  latencyMs: number
+}
+
+/** One web-searching model call; used by the agent tool and by the direct "ask_web" path. */
+export async function webLookup(query: string): Promise<WebLookup> {
+  const res = await chatJson<{ summary?: unknown; facts?: unknown }>({
+    system: 'Use the web search results provided. Return only JSON: {"summary": string (2-4 sentences, Polish, with dates for time-sensitive facts), "facts": string[] (up to 6 concrete facts with their source domain in parentheses)}. Never say you lack access; the results are attached.',
+    user: query,
+    web: true,
+    maxTokens: 600,
+  })
+  return { summary: str(res.data.summary, 1200), facts: list(res.data.facts, 6), sources: res.sources, model: res.model, latencyMs: res.latencyMs }
+}
+
 const searchWeb: ToolDef = {
   name: 'search_web',
   description: 'Search the public internet and read the results: news, market and exchange rates, regulations, competitors, public information about companies and products. Not for company-internal facts. Returns a short summary with the pages used.',
   parameters: { type: 'object', properties: { query: { type: 'string', description: 'What to look up, as a natural question or keywords. Polish or English.' } }, required: ['query'] },
   async run(args) {
-    const query = str(args.query, 300)
-    const res = await chatJson<{ summary?: unknown; facts?: unknown }>({
-      system: 'Use the web search results provided. Return only JSON: {"summary": string (2-4 sentences, Polish, with dates for time-sensitive facts), "facts": string[] (up to 6 concrete facts with their source domain in parentheses)}. Never say you lack access; the results are attached.',
-      user: query,
-      web: true,
-      maxTokens: 600,
-    })
-    const facts = list(res.data.facts, 6)
-    return { content: `${str(res.data.summary, 1200)}\n${facts.map((f) => `- ${f}`).join('\n')}\nSources: ${res.sources.map((s) => s.url).join(', ') || 'none'}`, sources: res.sources }
+    const res = await webLookup(str(args.query, 300))
+    return { content: `${res.summary}\n${res.facts.map((f) => `- ${f}`).join('\n')}\nSources: ${res.sources.map((s) => s.url).join(', ') || 'none'}`, sources: res.sources }
   },
 }
 

@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 
+import { FACET_LABEL, type Facet } from '../demo/knowledge.ts'
 import type { RelevanceInput, RelevanceResult } from './relevance.ts'
 
 export type { JudgeMode, RelevanceAction, RelevanceInput, RelevanceResult, RelevanceTarget, TranscriptTurn } from './relevance.ts'
@@ -184,5 +185,97 @@ export const sendDraft = createServerFn({ method: 'POST' })
       return updateDraft(session, draft.id, { status: 'sent', sentAt: Date.now() }) ?? null
     } catch (err) {
       return updateDraft(session, draft.id, { status: 'failed', error: err instanceof Error ? err.message : String(err) }) ?? null
+    }
+  })
+
+// ---------- cards straight from the graph ----------
+
+export type { CardEvent, CardFact, CardOption, CardPerson, GraphCard, GraphCitation, PersonCard as GraphPersonCard, SpendSeries, TopicCard } from './graph-cards.ts'
+
+/** Topics and people the router can pick, for tray titles and the debug rail. */
+export const graphCatalog = createServerFn({ method: 'GET' }).handler(async () => {
+  const { publicCatalog } = await import('./graph-cards.ts')
+  try {
+    return publicCatalog()
+  } catch {
+    return { company: null, topics: [], people: [] }
+  }
+})
+
+const FACETS = Object.keys(FACET_LABEL) as Facet[]
+
+/** One topic or person card, built deterministically from the graph. Null when the entity is gone. */
+export const getGraphCard = createServerFn({ method: 'POST' })
+  .inputValidator((input: { kind: 'topic' | 'person'; id: string; facet?: Facet }) => ({
+    kind: (input?.kind === 'person' ? 'person' : 'topic') as 'topic' | 'person',
+    id: clean(input?.id, 200),
+    facet: (FACETS.includes(input?.facet as Facet) ? input.facet : 'general') as Facet,
+  }))
+  .handler(async ({ data }): Promise<import('./graph-cards.ts').GraphCard | null> => {
+    const { buildCard } = await import('./graph-cards.ts')
+    return buildCard(data)
+  })
+
+// ---------- direct paths that skip the agent ----------
+
+const quickInput = (input: { sessionId: string; request: string; lines?: import('./session.ts').SessionLine[] }) => {
+  const request = clean(input?.request, 800)
+  if (!request) throw new Error('Pusta prośba.')
+  return { sessionId: clean(input?.sessionId, 80) || 'default', request, lines: cleanLines(input?.lines) }
+}
+
+const plural = (n: number, one: string, few: string, many: string): string => {
+  const m10 = n % 10
+  const m100 = n % 100
+  return `${n} ${n === 1 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many}`
+}
+
+/** "Zrób punkty z tego, co omawialiśmy": notes from the transcript, one Haiku call, no agent loop. */
+export const quickNotes = createServerFn({ method: 'POST' })
+  .inputValidator(quickInput)
+  .handler(async ({ data }): Promise<import('./agent.ts').AgentResult> => {
+    const { appendLines, loadSession } = await import('./session.ts')
+    const { summarizeLines } = await import('./actions.ts')
+    const started = performance.now()
+    const session = loadSession(data.sessionId)
+    if (data.lines.length) appendLines(session, data.lines)
+    const note = await summarizeLines(session.lines, data.request)
+    return {
+      kind: 'agent',
+      question: data.request,
+      headline: '',
+      answer: `${plural(note.bullets.length, 'punkt', 'punkty', 'punktów')}, ${plural(note.decisions.length, 'decyzja', 'decyzje', 'decyzji')}, ${plural(note.actionItems.length, 'zadanie', 'zadania', 'zadań')}.`,
+      bullets: [],
+      attachments: [{ type: 'note', note }],
+      sources: [],
+      steps: [{ tool: 'meeting_notes', args: JSON.stringify({ scope: note.scope }), summary: note.title, ms: note.latencyMs }],
+      model: note.model,
+      latencyMs: Math.round(performance.now() - started),
+      needsInput: false,
+    }
+  })
+
+/** "Jaki jest kurs euro?": one web-searching call, no agent loop. */
+export const quickWeb = createServerFn({ method: 'POST' })
+  .inputValidator(quickInput)
+  .handler(async ({ data }): Promise<import('./agent.ts').AgentResult> => {
+    const { appendLines, loadSession } = await import('./session.ts')
+    const { webLookup } = await import('./tools.ts')
+    const started = performance.now()
+    const session = loadSession(data.sessionId)
+    if (data.lines.length) appendLines(session, data.lines)
+    const res = await webLookup(data.request)
+    return {
+      kind: 'agent',
+      question: data.request,
+      headline: '',
+      answer: res.summary,
+      bullets: res.facts.slice(0, 4),
+      attachments: [],
+      sources: res.sources,
+      steps: [{ tool: 'search_web', args: JSON.stringify({ query: data.request }), summary: res.summary.slice(0, 200), ms: res.latencyMs }],
+      model: res.model,
+      latencyMs: Math.round(performance.now() - started),
+      needsInput: false,
     }
   })

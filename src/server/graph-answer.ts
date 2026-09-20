@@ -122,7 +122,7 @@ export function retrieveChunks(g: KnowledgeGraph, question: string, recent: stri
   return [...seen.values()]
 }
 
-const SYSTEM = `You are ${ASSISTANT_NAME}, a live assistant on the screen of a Polish company's board meeting (Aster Systems, a fictional B2B software vendor). Someone in the room asked a question. Answer it from the GRAPH and SOURCES below only.
+const systemPrompt = (company: string | null) => `You are ${ASSISTANT_NAME}, a live assistant on the screen of the board meeting of ${company ?? 'a Polish company'}. Someone in the room asked a question. Answer it from the GRAPH and SOURCES below only.
 
 Rules:
 - Answer in Polish, the way you would say it aloud in a meeting: short, concrete, numbers first.
@@ -184,7 +184,8 @@ export async function answerFromGraph(input: { question: string; recent?: string
   const totals = spendTotals(g)
   const user = `${context}QUESTION: ${input.question}\n\nGRAPH:\n${digest.text}\n${totals ? `\n${totals}\n` : ''}\nSOURCES:\n${sources}`
 
-  const res = await chatJson<RawAnswer>({ system: SYSTEM, user, maxTokens: 600, timeoutMs: 20000 })
+  const company = g.getGraphSnapshot().nodes.find((n) => n.kind === 'organization' && n.attributes.role === 'company')?.label ?? null
+  const res = await chatJson<RawAnswer>({ system: systemPrompt(company), user, maxTokens: 600, timeoutMs: 20000 })
   const raw = res.data
 
   const used = new Set(Array.isArray(raw.citations) ? raw.citations.map((c) => String(c).replace(/[[\]]/g, '')) : [])

@@ -5,16 +5,15 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type For
 import { AgentCardView, AgentErrorView, AgentLoadingView } from '@/components/meeting/agent-card'
 import { EmailSentView } from '@/components/meeting/email-sent-card'
 import { FitToScreen } from '@/components/meeting/fit-to-screen'
-import { KnowledgeCardView } from '@/components/meeting/knowledge-card'
-import { PersonCardView } from '@/components/meeting/person-card'
+import { CardLoadingView, GraphPersonView, TopicCardView } from '@/components/meeting/graph-card'
 import { PresentationView } from '@/components/meeting/presentation-view'
 import { ReportCardView } from '@/components/meeting/report-card'
 import { TranscriptRail, shownId, type Utterance } from '@/components/meeting/transcript-rail'
 import type { TrayItem } from '@/components/meeting/tray'
 import { Button } from '@/components/ui/button'
-import { FACET_LABEL, SCENARIOS, cardById, type Facet } from '@/demo/knowledge'
-import { personCardById } from '@/demo/people'
+import { FACET_LABEL, SCENARIOS, type Facet } from '@/demo/knowledge'
 import { PEOPLE } from '@/demo/seed'
+import { installChimeUnlock, playChime } from '@/lib/chime'
 import { matchDeck, type Deck, type DeckSummary } from '@/lib/slides'
 import { useTranscription } from '@/lib/transcription'
 import { cn } from '@/lib/utils'
@@ -24,18 +23,23 @@ import { NebulaOrb } from '@/registry/orbe/nebula-orb/nebula-orb'
 import { ORB_COLORS } from '@/routes/app/index'
 import {
   askAgent,
+  getGraphCard,
   getTask,
   getPresentation,
   getSession,
+  graphCatalog,
   judgeFocus,
   judgeUtterance,
   listPresentations,
   pollAgent,
+  quickNotes,
+  quickWeb,
   sendDraft,
   syncSession,
   type AgentResult,
   type AgentStep,
   type EmailDraft,
+  type GraphCard,
   type RelevanceResult,
   type SessionLine,
   type TaskResult,
@@ -110,6 +114,8 @@ interface MeetingState {
   fresh: string[]
   /** Email drafts by id, with their send status. */
   drafts: Record<string, EmailDraft>
+  /** Topic and person cards fetched from the graph, keyed by `cardKey`. */
+  cards: Record<string, GraphCard>
   seq: number
   /** Someone said only the name: the next utterance is the request. */
   armed: boolean
@@ -127,6 +133,7 @@ type MeetingAction =
   | { type: 'failed'; utteranceId: string; error: string }
   | { type: 'task'; task: TaskResult }
   | { type: 'draft'; draft: EmailDraft }
+  | { type: 'card'; key: string; card: GraphCard }
   | { type: 'judged'; utteranceId: string; seq: number; result: RelevanceResult }
   | { type: 'pin'; kind: 'card' | 'person'; id: string; facet?: Facet }
   | { type: 'show'; id: string }
@@ -140,7 +147,13 @@ type MeetingAction =
   /** A line judged in focus mode: done thinking, nothing more to do with it. */
   | { type: 'settle'; utteranceId: string }
 
-const EMPTY: MeetingState = { utterances: [], current: null, history: [], results: {}, pendingTasks: {}, pendingJobs: {}, fresh: [], drafts: {}, seq: 0, armed: false, thinking: 0, focus: null }
+const EMPTY: MeetingState = { utterances: [], current: null, history: [], results: {}, pendingTasks: {}, pendingJobs: {}, fresh: [], drafts: {}, cards: {}, seq: 0, armed: false, thinking: 0, focus: null }
+
+/** A person card is the same from every angle; a topic card depends on the facet. */
+const cardKey = (kind: 'card' | 'person', id: string, facet: Facet): string => (kind === 'person' ? `person:${id}` : `card:${id}:${facet}`)
+
+/** Errors that mean "handled elsewhere", not a failure to show. */
+const SILENT_ERRORS = new Set(['person', 'card', 'ui'])
 
 const sameTarget = (a: Shown, b: Shown) => a.kind === b.kind && a.id === b.id && (a.kind !== 'card' || a.facet === b.facet)
 
@@ -225,19 +238,18 @@ function reduce(state: MeetingState, action: MeetingAction): MeetingState {
       const current: Shown = { kind: 'result', id: key, facet: 'general', utteranceId: '', seq }
       return { ...state, drafts, seq, current, history: pushHistory(state.history, current), results: { ...state.results, [key]: { status: 'done', question: `Mail do ${action.draft.to.join(', ')}`, result: { kind: 'sent', draft: action.draft } } } }
     }
+    case 'card':
+      return { ...state, cards: { ...state.cards, [action.key]: action.card } }
     case 'judged': {
       const utterances = state.utterances.map((u) => (u.id === action.utteranceId ? { ...u, pending: false, result: action.result } : u))
       const r = action.result
       let { current, history } = state
       const id = shownId(r)
-      if (r.action === 'show' && id && r.target === 'person' && action.seq >= (current?.seq ?? -1)) {
-        // A person beats the agent: the profile card is the better screen for "who is X".
-        current = { kind: 'person', id, facet: 'general', utteranceId: action.utteranceId, seq: action.seq }
+      // Addressed: the graph card replaces the loading card of the same seq. Ambient: cards surface on their own, never over something newer.
+      const wins = r.mode === 'command' ? action.seq >= (current?.seq ?? -1) : action.seq > (current?.seq ?? -1)
+      if (r.action === 'show' && id && r.target && wins) {
+        current = { kind: r.target === 'person' ? 'person' : 'card', id, facet: r.target === 'person' ? 'general' : r.facet.id, utteranceId: action.utteranceId, seq: action.seq }
         history = pushHistory(history.filter((h) => !(h.kind === 'result' && h.id === action.utteranceId)), current)
-      } else if (r.mode === 'ambient' && r.action === 'show' && id && r.target && action.seq > (current?.seq ?? -1)) {
-        // Ambient mode only: topic cards surface on their own.
-        current = { kind: r.target, id, facet: r.facet.id, utteranceId: action.utteranceId, seq: action.seq }
-        history = pushHistory(history, current)
       }
       return { ...state, utterances, current, history, thinking: Math.max(0, state.thinking - 1) }
     }
@@ -282,7 +294,7 @@ function reduce(state: MeetingState, action: MeetingAction): MeetingState {
 
 const STORAGE_KEY = 'bolek-meeting-v2'
 
-interface Persisted extends Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks' | 'drafts' | 'focus'> {
+interface Persisted extends Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks' | 'drafts' | 'focus' | 'cards'> {
   sessionId: string
   scenarioId: string
   cursor: number
@@ -306,6 +318,7 @@ function loadPersisted(): Persisted | null {
       seq: parsed.seq ?? 0,
       pendingTasks: parsed.pendingTasks ?? {},
       drafts: parsed.drafts ?? {},
+      cards: parsed.cards ?? {},
       focus: parsed.focus ?? null,
       sessionId: parsed.sessionId ?? newSessionId(),
       scenarioId: parsed.scenarioId ?? SCENARIOS[0]!.id,
@@ -375,6 +388,23 @@ function MeetingScreen() {
     void refreshDecks()
   }, [refreshDecks])
 
+  // Who and what the graph knows, for tray titles and the debug rail. Cards themselves are fetched when shown.
+  const [catalog, setCatalog] = useState<{ topics: { id: string; label: string; subtitle: string }[]; people: { id: string; label: string; role?: string }[] }>({ topics: [], people: [] })
+  useEffect(() => {
+    graphCatalog()
+      .then((c) => setCatalog({ topics: c.topics, people: c.people }))
+      .catch(() => {})
+  }, [])
+  const entityLabels = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const t of catalog.topics) out[t.id] = t.label
+    for (const p of catalog.people) out[p.id] = p.label
+    return out
+  }, [catalog])
+
+  // Bolek never speaks: a chime confirms each action. Audio needs a gesture first.
+  useEffect(() => installChimeUnlock(), [])
+
   /** Puts a deck on screen in focus mode, fetching its slides if needed. */
   const openDeck = useCallback((id: string, slide?: number, utteranceId?: string) => {
     dispatch({ type: 'focus', id, slide, utteranceId })
@@ -436,7 +466,7 @@ function MeetingScreen() {
           if (!session) return
           const utterances: Utterance[] = session.lines.map((l) => ({ id: l.id, speaker: l.speaker, text: l.text, at: l.at, addressed: l.addressed, skipped: !l.addressed }))
           const drafts = Object.fromEntries(session.drafts.map((d) => [d.id, d]))
-          dispatch({ type: 'restore', state: { utterances, results: {}, history: [], seq: 0, pendingTasks: {}, drafts, focus: null, sessionId: wanted, scenarioId, cursor: 0 } })
+          dispatch({ type: 'restore', state: { utterances, results: {}, history: [], seq: 0, pendingTasks: {}, drafts, cards: {}, focus: null, sessionId: wanted, scenarioId, cursor: 0 } })
           seq.current = utterances.length
           synced.current = utterances.length
           if (present) openDeck(present, 0)
@@ -464,8 +494,8 @@ function MeetingScreen() {
   useEffect(() => {
     if (!restored.current || !sessionId) return
     try {
-      const { utterances, results, history, seq: s, pendingTasks, drafts, focus } = state
-      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, drafts, focus, sessionId, scenarioId, cursor }
+      const { utterances, results, history, seq: s, pendingTasks, drafts, cards, focus } = state
+      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, drafts, cards, focus, sessionId, scenarioId, cursor }
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
     } catch {
       /* storage full or blocked: the meeting simply is not persisted */
@@ -501,12 +531,15 @@ function MeetingScreen() {
       .flatMap((h): TrayItem[] => {
         const key = `${h.kind}-${h.id}-${h.facet}`
         if (h.kind === 'person') {
-          const p = personCardById(h.id)
-          return p ? [{ key, kind: 'person', title: p.name, subtitle: p.role, status: 'done' }] : []
+          const card = state.cards[cardKey('person', h.id, 'general')]
+          const p = catalog.people.find((x) => x.id === h.id)
+          const title = card?.kind === 'person' ? card.name : p?.label
+          return title ? [{ key, kind: 'person', title, subtitle: card?.kind === 'person' ? card.role : p?.role, status: 'done' }] : []
         }
         if (h.kind === 'card') {
-          const c = cardById(h.id)
-          return c ? [{ key, kind: 'card', title: c.title, subtitle: FACET_LABEL[h.facet], status: 'done' }] : []
+          const card = state.cards[cardKey('card', h.id, h.facet)]
+          const title = card?.kind === 'topic' ? card.title : catalog.topics.find((x) => x.id === h.id)?.label
+          return title ? [{ key, kind: 'card', title, subtitle: FACET_LABEL[h.facet], status: 'done' }] : []
         }
         if (h.kind === 'presentation') {
           const d = decks[h.id] ?? deckList.find((x) => x.id === h.id)
@@ -517,7 +550,7 @@ function MeetingScreen() {
         if (!e) return []
         const fresh = state.fresh.includes(h.id)
         if (e.status === 'loading') return [{ key, kind: 'answer', title: e.question, subtitle: e.activity, status: 'running' }]
-        if (e.status === 'error') return e.error === 'person' || e.error === 'ui' ? [] : [{ key, kind: 'answer', title: e.question, subtitle: 'nie udało się', status: 'done' }]
+        if (e.status === 'error') return SILENT_ERRORS.has(e.error) ? [] : [{ key, kind: 'answer', title: e.question, subtitle: 'nie udało się', status: 'done' }]
         const r = e.result
         if (r.kind === 'sent') return [{ key, kind: 'email', title: `Wysłano: ${r.draft.subject}`, subtitle: r.draft.to.join(', '), status: 'done' }]
         if (r.kind === 'task') {
@@ -530,7 +563,7 @@ function MeetingScreen() {
         const title = first?.type === 'document' ? first.title : first?.type === 'note' ? first.note.title : first?.type === 'email_draft' ? first.subject : r.headline || r.question
         return [{ key, kind, title, subtitle: title === r.question ? undefined : r.question, status: fresh ? 'fresh' : 'done' }]
       })
-  }, [state.history, state.current, state.results, state.fresh, decks, deckList])
+  }, [state.history, state.current, state.results, state.fresh, state.cards, catalog, decks, deckList])
 
   const freshItems = useMemo(() => trayItems.filter((t) => t.status === 'fresh'), [trayItems])
 
@@ -540,6 +573,61 @@ function MeetingScreen() {
     if (!el) return
     el.scrollBy({ top: direction * el.clientHeight, behavior: 'smooth' })
   }, [])
+
+  // Whatever topic or person is on screen gets its card from the graph (deterministic, tens of milliseconds).
+  const currentKind = state.current?.kind
+  const currentId = state.current?.id
+  const currentFacet = state.current?.facet
+  useEffect(() => {
+    if (!currentId || !currentFacet || (currentKind !== 'card' && currentKind !== 'person')) return
+    const key = cardKey(currentKind, currentId, currentFacet)
+    if (stateRef.current.cards[key]) return
+    let cancelled = false
+    getGraphCard({ data: { kind: currentKind === 'person' ? 'person' : 'topic', id: currentId, facet: currentFacet } })
+      .then((card) => {
+        if (cancelled) return
+        if (card) dispatch({ type: 'card', key, card })
+        else dispatch({ type: 'dismiss' })
+      })
+      .catch(() => {
+        if (!cancelled) playChime('error')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentKind, currentId, currentFacet])
+
+  // Chimes: a card landed, a result finished, a task came back. Nothing during the first moment, when a saved meeting is restored.
+  const mountedAt = useRef(Date.now())
+  const chimedFor = useRef('')
+  useEffect(() => {
+    const c = state.current
+    if (!c || Date.now() - mountedAt.current < 1500) return
+    let key: string | null = null
+    if (c.kind === 'card' || c.kind === 'person') {
+      if (!state.cards[cardKey(c.kind, c.id, c.facet)]) return
+      key = `${cardKey(c.kind, c.id, c.facet)}#${c.seq}`
+    } else if (c.kind === 'presentation') key = `presentation:${c.id}#${c.seq}`
+    if (key && chimedFor.current !== key) {
+      chimedFor.current = key
+      playChime('done')
+    }
+  }, [state.current, state.cards])
+  const previousResults = useRef(state.results)
+  useEffect(() => {
+    const prev = previousResults.current
+    previousResults.current = state.results
+    if (Date.now() - mountedAt.current < 1500) return
+    for (const [k, e] of Object.entries(state.results)) {
+      const p = prev[k]
+      if (e.status === 'done') {
+        const running = e.result.kind === 'task' && (e.result.status === 'queued' || e.result.status === 'running')
+        const wasRunning = p?.status === 'done' && p.result.kind === 'task' && (p.result.status === 'queued' || p.result.status === 'running')
+        if (running) continue
+        if (!p || p.status !== 'done' || wasRunning) playChime(e.result.kind === 'task' && e.result.status === 'failed' ? 'error' : 'done')
+      } else if (e.status === 'error' && p?.status !== 'error' && !SILENT_ERRORS.has(e.error)) playChime('error')
+    }
+  }, [state.results])
 
   const openTrayItem = useCallback((item: TrayItem) => {
     const h = stateRef.current.history.find((x) => `${x.kind}-${x.id}-${x.facet}` === item.key)
@@ -584,12 +672,14 @@ function MeetingScreen() {
       // Unmounting stops the microphone; the session stays on the server.
       if (isExit(command)) {
         dispatch({ type: 'say', utterance: { ...base, addressed: true, skipped: true } })
+        playChime('soft')
         void navigate({ to: '/' })
         return
       }
       if (addressed && isDismissal(command)) {
         dispatch({ type: 'say', utterance: { ...base, addressed: true, skipped: true, dismissed: true } })
         dispatch({ type: 'dismiss' })
+        playChime('soft')
         return
       }
 
@@ -615,25 +705,29 @@ function MeetingScreen() {
           .then((result) => {
             dispatch({ type: 'judged', utteranceId: id, seq: mySeq, result })
             if (!addressed) return
-            // A person Jev could name is on screen already; a person it could not name goes to the agent, which can search.
-            const intent = result.action === 'show' && result.target === 'person' ? 'person' : result.intent.id === 'person' ? 'ask' : result.intent.id
-            // Screen commands and person lookups need no result page; only the agent gets one.
+            // A card from the graph beats everything: the reducer already put it on screen. A person Jev could not
+            // name goes to the agent, which can search. Screen commands and cards need no result page; only the agent gets one.
+            const intent = result.action === 'show' && result.target ? (result.target === 'person' ? 'person' : 'card') : result.intent.id === 'person' ? 'ask' : result.intent.id
             switch (intent) {
               case 'person':
+              case 'card':
                 return
               case 'ui_close':
               case 'ui_background':
                 dispatch({ type: 'dismiss' })
+                playChime('soft')
                 return
               case 'ui_open': {
                 const target = result.openTarget?.id ? trayItems.find((t) => t.key === result.openTarget!.id) : trayItems[0]
                 if (target) openTrayItem(target)
                 else dispatch({ type: 'dismiss' })
+                playChime(target ? 'done' : 'soft')
                 return
               }
               case 'ui_scroll_up':
               case 'ui_scroll_down':
                 scrollPages(intent === 'ui_scroll_up' ? -1 : 1)
+                playChime('soft')
                 return
               case 'ui_present': {
                 void refreshDecks().then((fresh) => {
@@ -658,15 +752,28 @@ function MeetingScreen() {
                   .sort((a, b) => b.createdAt - a.createdAt)[0]
                 if (latest) {
                   send(latest.id)
+                  playChime('soft')
                   return
                 }
                 // Nothing to send yet: "wyślij maila do Tomka…" is a request for a draft, so the agent writes one.
                 break
               }
+              case 'ask_meeting':
+                // Notes from the transcript: one call, no agent loop. The result page appears now and fills in.
+                dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
+                return quickNotes({ data: { sessionId, request: command, lines: [thisLine] } })
+                  .then((res) => dispatch({ type: 'resolved', utteranceId: id, result: res }))
+                  .catch((err: unknown) => dispatch({ type: 'failed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
+              case 'ask_web':
+                dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
+                return quickWeb({ data: { sessionId, request: command, lines: [thisLine] } })
+                  .then((res) => dispatch({ type: 'resolved', utteranceId: id, result: res }))
+                  .catch((err: unknown) => dispatch({ type: 'failed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
               default:
                 break
             }
-            // Everything else: the agent decides which tools to use. The result page appears now and fills in as it works.
+            // Company questions without a resolved entity, things to produce, and the rest: the agent decides which tools to use.
+            // The result page appears now and fills in as it works.
             dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
             return askAgent({ data: { sessionId, request: command, lines: [thisLine] } })
               .then(({ jobId }) => dispatch({ type: 'job', utteranceId: id, jobId }))
@@ -837,7 +944,7 @@ function MeetingScreen() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [stepScenario])
+  }, [stepScenario, scrollPages])
 
   const submitTyped = (e: FormEvent) => {
     e.preventDefault()
@@ -848,16 +955,15 @@ function MeetingScreen() {
   }
 
   const last = state.utterances.at(-1)
-  /** Whether a history entry has something to put on a page. */
+  /** Whether a history entry has something to put on a page. Graph cards render at once (a skeleton until the card arrives). */
   const renderable = useCallback(
     (h: Shown): boolean => {
-      if (h.kind === 'card') return Boolean(cardById(h.id))
-      if (h.kind === 'person') return Boolean(personCardById(h.id))
+      if (h.kind === 'card' || h.kind === 'person') return Boolean(state.cards[cardKey(h.kind, h.id, h.facet)]) || Boolean(state.current && sameTarget(state.current, h))
       if (h.kind === 'presentation') return false
       const e = state.results[h.id]
-      return Boolean(e && !(e.status === 'error' && (e.error === 'person' || e.error === 'ui')))
+      return Boolean(e && !(e.status === 'error' && SILENT_ERRORS.has(e.error)))
     },
-    [state.results],
+    [state.results, state.cards, state.current],
   )
   // The screen is a stack of pages, oldest at the top, the current one at the bottom filling the viewport.
   const pages = useMemo(() => [...state.history].reverse().filter(renderable), [state.history, renderable])
@@ -975,8 +1081,7 @@ function MeetingScreen() {
         {showing && !state.focus && state.current && (
           <div ref={stackRef} className="absolute inset-0 snap-y snap-mandatory overflow-y-auto px-6 md:px-10">
             {pages.map((h) => {
-              const card = h.kind === 'card' ? cardById(h.id) : undefined
-              const person = h.kind === 'person' ? personCardById(h.id) : undefined
+              const graphCard = h.kind === 'card' || h.kind === 'person' ? state.cards[cardKey(h.kind, h.id, h.facet)] : undefined
               const entry = h.kind === 'result' ? state.results[h.id] : undefined
               const triggeredBy = triggeredFor(h)
               const isCurrent = state.current && sameTarget(state.current, h)
@@ -988,8 +1093,9 @@ function MeetingScreen() {
                         <XIcon /> Schowaj
                       </Button>
                     </div>
-                    {card && <KnowledgeCardView card={card} facet={h.facet} triggeredBy={triggeredBy} />}
-                    {person && <PersonCardView person={person} triggeredBy={triggeredBy} onOpenCard={(id) => dispatch({ type: 'pin', kind: 'card', id })} />}
+                    {(h.kind === 'card' || h.kind === 'person') && !graphCard && <CardLoadingView title={entityLabels[h.id] ?? ''} />}
+                    {graphCard?.kind === 'topic' && <TopicCardView card={graphCard} triggeredBy={triggeredBy} onOpenPerson={(id) => dispatch({ type: 'pin', kind: 'person', id })} />}
+                    {graphCard?.kind === 'person' && <GraphPersonView card={graphCard} triggeredBy={triggeredBy} onOpenTopic={(id) => dispatch({ type: 'pin', kind: 'card', id })} />}
                     {entry?.status === 'loading' && <AgentLoadingView question={entry.question} activity={entry.activity} steps={entry.steps} triggeredBy={triggeredBy} />}
                     {entry?.status === 'error' && <AgentErrorView question={entry.question} error={entry.error} />}
                     {entry?.status === 'done' && entry.result.kind === 'agent' && (
@@ -1018,7 +1124,7 @@ function MeetingScreen() {
               </span>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
-              <TranscriptRail utterances={state.utterances} interim={speech.interim} debug />
+              <TranscriptRail utterances={state.utterances} interim={speech.interim} debug labels={entityLabels} />
             </div>
           </aside>
         )}

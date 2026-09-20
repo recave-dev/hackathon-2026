@@ -1,5 +1,6 @@
 import { ASSISTANT_NAME } from '../lib/wake-word.ts'
 import { refreshDigest, renderDigest } from './context.ts'
+import { graphCatalog } from './graph-cards.ts'
 import { openrouterKey, type WebSource } from './llm.ts'
 import type { Session } from './session.ts'
 import { TOOLS, recentTranscript, toolByName, type Attachment } from './tools.ts'
@@ -70,8 +71,16 @@ interface Message {
   name?: string
 }
 
+function companyName(): string {
+  try {
+    return graphCatalog().company ?? 'the company'
+  } catch {
+    return 'the company'
+  }
+}
+
 function systemPrompt(session: Session): string {
-  return `You are ${ASSISTANT_NAME}, the assistant sitting in on a Polish company's board meeting (Aster Systems, a fictional B2B software vendor). People address you by name; the screen in the room shows your answers. Answer in Polish, the way you would speak in a meeting: short, concrete, numbers and names first, no filler and no preamble.
+  return `You are ${ASSISTANT_NAME}, the assistant sitting in on the board meeting of ${companyName()}, a Polish company. People address you by name; the screen in the room shows your answers. Answer in Polish, the way you would speak in a meeting: short, concrete, numbers and names first, no filler and no preamble.
 
 How to work:
 - Decide what the request needs. Company facts (costs, invoices, approvals, owners, pilots, customers, decisions) live in the company graph: use company_knowledge (query in English), then get_entity or list_entities to dig further if the first search is thin. Never state a company figure you did not get from a tool.

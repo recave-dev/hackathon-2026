@@ -1,11 +1,11 @@
 import type { Scenario, ScenarioLine } from '../src/demo/knowledge.ts'
-import { matchWake } from '../src/lib/wake-word.ts'
+import { isDismissal, isExit, matchWake } from '../src/lib/wake-word.ts'
 import type { RelevanceInput, RelevanceResult } from '../src/server/relevance.ts'
 
 /**
  * Drives a scripted meeting the way the screen does: wake-word detection,
- * arming on a bare "Bolek", command vs ambient judging. Shared by the offline
- * test and the live Jev eval.
+ * arming on a bare "Bolek", local dismissal and exit commands, command vs
+ * ambient judging. Shared by the offline test and the live Jev eval.
  */
 
 export interface ReplayStep {
@@ -15,11 +15,10 @@ export interface ReplayStep {
   expected: string | null
 }
 
-/** Mirrors the screen: when addressed, only a person card is shown (topics go to the graph answer). */
+/** Mirrors the screen: a person card or a topic card from the graph, when the router says show. */
 export const shownOf = (r: RelevanceResult | null): string | null => {
   if (!r || r.action !== 'show') return null
-  if (r.target === 'person') return r.person.id
-  return r.mode === 'command' ? null : r.topic.id
+  return r.target === 'person' ? r.person.id : r.topic.id
 }
 
 export async function replayScenario(scenario: Scenario, judge: (input: RelevanceInput) => Promise<RelevanceResult>): Promise<ReplayStep[]> {
@@ -36,8 +35,9 @@ export async function replayScenario(scenario: Scenario, judge: (input: Relevanc
       armed = true
     } else {
       armed = false
-      if (scenario.mode === 'ambient' || addressed) {
-        const latest = wake.addressed ? wake.command || line.text : line.text
+      const latest = wake.addressed ? wake.command || line.text : line.text
+      const local = isExit(latest) || (addressed && isDismissal(latest))
+      if (!local && (scenario.mode === 'ambient' || addressed)) {
         result = await judge({ meeting, recent: [...recent.slice(-5), { speaker: line.speakerId, text: latest }], mode: addressed ? 'command' : 'ambient' })
       }
     }

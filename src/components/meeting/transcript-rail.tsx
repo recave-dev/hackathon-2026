@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import { Spinner } from '@/components/ui/spinner'
-import { FACET_LABEL, cardById } from '@/demo/knowledge'
-import { personCardById } from '@/demo/people'
+import { FACET_LABEL } from '@/demo/knowledge'
 import { ASSISTANT_NAME } from '@/lib/wake-word'
 import type { RelevanceResult } from '@/server/meeting-assist'
 import { cn } from '@/lib/utils'
@@ -28,14 +27,15 @@ export interface Utterance {
 /** What the assistant showed for this utterance, as an id, or null. */
 export const shownId = (r: RelevanceResult | undefined): string | null => {
   if (!r || r.action !== 'show') return null
-  if (r.target === 'person') return r.person.id
-  // When addressed, topic matches are not shown; the graph answer is.
-  return r.mode === 'command' ? null : r.topic.id
+  return r.target === 'person' ? r.person.id : r.topic.id
 }
+
+/** Graph entity id → label, for the rail; ids are shown when the catalog has not loaded. */
+export type EntityLabels = Record<string, string>
 
 export const expectedId = (u: Utterance): string | null | undefined => (u.expect === undefined ? undefined : (u.expect?.person ?? u.expect?.card ?? null))
 
-export function TranscriptRail({ utterances, interim, debug }: { utterances: Utterance[]; interim?: string; debug: boolean }) {
+export function TranscriptRail({ utterances, interim, debug, labels = {} }: { utterances: Utterance[]; interim?: string; debug: boolean; labels?: EntityLabels }) {
   const end = useRef<HTMLDivElement>(null)
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
@@ -45,7 +45,7 @@ export function TranscriptRail({ utterances, interim, debug }: { utterances: Utt
     <ol className="flex flex-col gap-3">
       {utterances.length === 0 && !interim && <li className="text-sm text-muted-foreground">Transkrypcja pojawi się tutaj.</li>}
       {utterances.map((u) => (
-        <UtteranceRow key={u.id} utterance={u} debug={debug} />
+        <UtteranceRow key={u.id} utterance={u} debug={debug} labels={labels} />
       ))}
       {interim && (
         <li className="flex flex-col gap-1 rounded-xl border border-dashed border-border px-3 py-2.5">
@@ -58,24 +58,13 @@ export function TranscriptRail({ utterances, interim, debug }: { utterances: Utt
   )
 }
 
-function UtteranceRow({ utterance, debug }: { utterance: Utterance; debug: boolean }) {
+function UtteranceRow({ utterance, debug, labels }: { utterance: Utterance; debug: boolean; labels: EntityLabels }) {
   const r = utterance.result
   const shown = r?.action === 'show'
   const mentioned = r?.action === 'mention'
-  const card = cardById(r?.topic.id)
-  const person = personCardById(r?.person.id)
-  // Addressed lines are routed by intent; ambient lines by topic card.
-  const label = shown
-    ? r!.target === 'person'
-      ? person?.name
-      : r!.mode === 'command'
-        ? `→ ${r!.intent.id}`
-        : card
-          ? `${card.title} · ${FACET_LABEL[r!.facet.id]}`
-          : null
-    : r?.mode === 'command'
-      ? `→ ${r.intent.id}`
-      : null
+  const name = (id: string | null | undefined) => (id ? (labels[id] ?? id) : null)
+  // Addressed lines are routed by intent; a shown card or person names the entity.
+  const label = shown ? (r!.target === 'person' ? name(r!.person.id) : `${name(r!.topic.id)} · ${FACET_LABEL[r!.facet.id]}`) : r?.mode === 'command' ? `→ ${r.intent.id}` : null
   const expected = expectedId(utterance)
   const check = expected === undefined ? undefined : expected === shownId(r)
 
@@ -96,7 +85,7 @@ function UtteranceRow({ utterance, debug }: { utterance: Utterance; debug: boole
           {utterance.pending && <Spinner className="size-3" />}
           {label && <span className="rounded-md bg-background/70 px-1.5 py-0.5 font-medium text-foreground">{label}</span>}
           {utterance.dismissed && <span className="rounded-md bg-background/70 px-1.5 py-0.5">schowano</span>}
-          {mentioned && card && <span className="rounded-md bg-background/70 px-1.5 py-0.5">wzmianka: {card.title}</span>}
+          {mentioned && r?.topic.id && <span className="rounded-md bg-background/70 px-1.5 py-0.5">wzmianka: {name(r.topic.id)}</span>}
           {debug && check !== undefined && (r || utterance.skipped) && (
             <span className={cn('font-mono', check ? 'text-primary' : 'text-destructive')} title={check ? 'zgodne z oczekiwaniem' : `oczekiwano: ${expected ?? 'nic'}`}>
               {check ? '✓' : '✗'}
