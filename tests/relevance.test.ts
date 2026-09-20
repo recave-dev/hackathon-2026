@@ -36,3 +36,14 @@ test('dismissal phrases', () => {
   assert.equal(isDismissal(matchWake('Bolek, kim jest Darek Wylon?').command), false)
   assert.equal(isDismissal(matchWake('Bolek, ile płacimy za Pipedrive?').command), false)
 })
+
+test('offline fallback picks a sensible intent for addressed requests', () => {
+  const meeting = { title: 't', goal: '', participants: [] }
+  const intentOf = (text: string) => fallback({ meeting, recent: [{ speaker: 'x', text }], mode: 'command' }, 0).intent.id
+  assert.equal(intentOf('zrób punkty z tego, co przed chwilą omawialiśmy'), 'meeting')
+  assert.equal(intentOf('przygotuj krótki raport o wydatkach na narzędzia'), 'report')
+  assert.equal(intentOf('jaki jest dzisiaj kurs euro według NBP?'), 'web')
+  assert.equal(intentOf('ile zapłaciliśmy za Pipedrive w sierpniu?'), 'data')
+  assert.equal(intentOf('kim jest Darek Wylon?'), 'person')
+  assert.equal(intentOf('co to jest amortyzacja?'), 'general')
+})

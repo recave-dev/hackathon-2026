@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { KnowledgeGraph, summarizeSpend } from '../graph/index.ts'
 import type { GraphNode, SourceChunk } from '../graph/index.ts'
 import { ASSISTANT_NAME } from '../lib/wake-word.ts'
+import { chatJson, openrouterKey } from './llm.ts'
 
 /**
  * Server-only: answers an open question from the whole company graph.
@@ -119,15 +120,6 @@ function retrieveChunks(g: KnowledgeGraph, question: string, recent: string[]): 
   return [...seen.values()]
 }
 
-function openrouterKey(): string | null {
-  const explicit = process.env.OPENROUTER_API_KEY?.trim()
-  if (explicit) return explicit
-  const typesafe = process.env.TYPESAFE_API_KEY?.trim()
-  return typesafe?.startsWith('sk-or-') ? typesafe : null
-}
-
-const MODEL = () => process.env.ANSWER_MODEL?.trim() || 'anthropic/claude-haiku-4.5'
-
 const SYSTEM = `You are ${ASSISTANT_NAME}, a live assistant on the screen of a Polish company's board meeting (Aster Systems, a fictional B2B software vendor). Someone in the room asked a question. Answer it from the GRAPH and SOURCES below only.
 
 Rules:
@@ -148,16 +140,6 @@ interface RawAnswer {
   citations?: unknown
   confidence?: unknown
   found?: unknown
-}
-
-function parseAnswer(text: string): RawAnswer {
-  const cleaned = text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-  const start = cleaned.indexOf('{')
-  const end = cleaned.lastIndexOf('}')
-  return JSON.parse(start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned) as RawAnswer
 }
 
 export async function answerFromGraph(input: { question: string; recent?: string[] }): Promise<GraphAnswer> {
@@ -200,25 +182,8 @@ export async function answerFromGraph(input: { question: string; recent?: string
   const totals = spendTotals(g)
   const user = `${context}QUESTION: ${input.question}\n\nGRAPH:\n${digest.text}\n${totals ? `\n${totals}\n` : ''}\nSOURCES:\n${sources}`
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': `${ASSISTANT_NAME} meeting assistant` },
-    body: JSON.stringify({
-      model: MODEL(),
-      temperature: 0.1,
-      max_tokens: 600,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: user },
-      ],
-    }),
-    signal: AbortSignal.timeout(20000),
-  })
-  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${(await res.text()).slice(0, 300)}`)
-  const body = (await res.json()) as { model?: string; choices?: { message?: { content?: string } }[] }
-  const content = body.choices?.[0]?.message?.content ?? ''
-  const raw = parseAnswer(content)
+  const res = await chatJson<RawAnswer>({ system: SYSTEM, user, maxTokens: 600, timeoutMs: 20000 })
+  const raw = res.data
 
   const used = new Set(Array.isArray(raw.citations) ? raw.citations.map((c) => String(c).replace(/[[\]]/g, '')) : [])
   const bulletText = Array.isArray(raw.bullets) ? raw.bullets.map(String) : []
@@ -233,7 +198,7 @@ export async function answerFromGraph(input: { question: string; recent?: string
     citations: citations.filter((c) => used.has(c.id)),
     confidence,
     found: raw.found !== false,
-    model: body.model ?? MODEL(),
+    model: res.model,
     latencyMs: Math.round(performance.now() - started),
   }
 }

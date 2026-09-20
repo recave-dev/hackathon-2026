@@ -44,3 +44,32 @@ export const askGraph = createServerFn({ method: 'POST' })
     const { answerFromGraph } = await import('./graph-answer.ts')
     return answerFromGraph(data)
   })
+
+export type { ActionInput, ActionResult, AnswerResult, NoteResult, TaskResult, TranscriptLine } from './actions.ts'
+
+const INTENT_IDS = ['person', 'data', 'meeting', 'general', 'web', 'report'] as const
+
+/** Runs the action Jev picked for an addressed request. Fast ones resolve; background ones return a task to poll. */
+export const runAction = createServerFn({ method: 'POST' })
+  .inputValidator((input: import('./actions.ts').ActionInput): import('./actions.ts').ActionInput => {
+    const intent = (INTENT_IDS as readonly string[]).includes(input?.intent) ? input.intent : 'general'
+    const request = clean(input?.request, 600)
+    if (!request) throw new Error('Pusta prośba.')
+    const transcript = (Array.isArray(input?.transcript) ? input.transcript : [])
+      .slice(-120)
+      .map((l) => ({ id: clean(l?.id, 40), speaker: clean(l?.speaker, 80), text: clean(l?.text, 800), at: Number(l?.at) || 0, addressed: Boolean(l?.addressed) }))
+      .filter((l) => l.id && l.text)
+    return { intent, request, transcript }
+  })
+  .handler(async ({ data }) => {
+    const { runAction: run } = await import('./actions.ts')
+    return run(data)
+  })
+
+/** Polls a background task started by `runAction`. */
+export const getTask = createServerFn({ method: 'POST' })
+  .inputValidator((input: { taskId: string }) => ({ taskId: clean(input?.taskId, 64) }))
+  .handler(async ({ data }) => {
+    const { getTask: get } = await import('./actions.ts')
+    return get(data.taskId) ?? null
+  })

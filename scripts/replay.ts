@@ -15,9 +15,11 @@ export interface ReplayStep {
   expected: string | null
 }
 
+/** Mirrors the screen: when addressed, only a person card is shown (topics go to the graph answer). */
 export const shownOf = (r: RelevanceResult | null): string | null => {
   if (!r || r.action !== 'show') return null
-  return r.target === 'person' ? r.person.id : r.topic.id
+  if (r.target === 'person') return r.person.id
+  return r.mode === 'command' ? null : r.topic.id
 }
 
 export async function replayScenario(scenario: Scenario, judge: (input: RelevanceInput) => Promise<RelevanceResult>): Promise<ReplayStep[]> {

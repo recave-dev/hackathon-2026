@@ -2,45 +2,58 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { BugIcon, EarIcon, LayoutGridIcon, MicIcon, MicOffIcon, PauseIcon, PlayIcon, RotateCcwIcon, SendIcon, SkipForwardIcon, SparklesIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react'
 
-import { ORB_COLORS } from '@/routes/app/index'
-import { AnswerCardView, type AnswerEntry } from '@/components/meeting/answer-card'
+import { AnswerCardView, AnswerErrorView, AnswerLoadingView } from '@/components/meeting/answer-card'
 import { KnowledgeCardView } from '@/components/meeting/knowledge-card'
+import { NoteCardView } from '@/components/meeting/note-card'
 import { PersonCardView } from '@/components/meeting/person-card'
+import { ReportCardView } from '@/components/meeting/report-card'
 import { TranscriptRail, expectedId, shownId, type Utterance } from '@/components/meeting/transcript-rail'
+import { Tray, type TrayItem } from '@/components/meeting/tray'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { formatDuration } from '@/demo/format'
 import { FACET_LABEL, SCENARIOS, cardById, type Facet, type ListeningMode } from '@/demo/knowledge'
 import { personCardById } from '@/demo/people'
 import { PEOPLE } from '@/demo/seed'
+import { intentById, type Intent } from '@/lib/intents'
 import { useTranscription } from '@/lib/transcription'
 import { cn } from '@/lib/utils'
 import { ASSISTANT_NAME, isDismissal, matchWake } from '@/lib/wake-word'
 import type { OrbState } from '@/registry/lib/orb-state'
 import { NebulaOrb } from '@/registry/orbe/nebula-orb/nebula-orb'
-import { askGraph, judgeUtterance, type GraphAnswer, type RelevanceResult } from '@/server/meeting-assist'
+import { ORB_COLORS } from '@/routes/app/index'
+import { getTask, judgeUtterance, runAction, type ActionResult, type RelevanceResult, type TaskResult, type TranscriptLine } from '@/server/meeting-assist'
 
 export const Route = createFileRoute('/meeting')({
   head: () => ({ meta: [{ title: `${ASSISTANT_NAME} · Spotkanie na żywo` }] }),
   component: MeetingScreen,
 })
 
-/** What is on screen: a topic card, a person, or an open answer keyed by the utterance that asked. */
+/** What is on screen: a topic card, a person, or the result of a request (keyed by the utterance that asked). */
 interface Shown {
-  kind: 'card' | 'person' | 'answer'
+  kind: 'card' | 'person' | 'result'
   id: string
   facet: Facet
   utteranceId: string
   seq: number
 }
 
+type ResultEntry =
+  | { status: 'loading'; question: string; intent?: Intent }
+  | { status: 'done'; question: string; intent: Intent; result: ActionResult }
+  | { status: 'error'; question: string; intent?: Intent; error: string }
+
 interface MeetingState {
   utterances: Utterance[]
   current: Shown | null
   /** What was on screen, latest first, one entry per target. */
   history: Shown[]
-  /** Open answers from the graph, keyed by utterance id. */
-  answers: Record<string, AnswerEntry>
+  /** Results of addressed requests, keyed by utterance id. */
+  results: Record<string, ResultEntry>
+  /** Background tasks still running: task id → utterance id. */
+  pendingTasks: Record<string, string>
+  /** Finished background tasks the room has not looked at yet. */
+  fresh: string[]
   seq: number
   /** Someone said only the name: the next utterance is the request. */
   armed: boolean
@@ -51,54 +64,72 @@ interface MeetingState {
 type MeetingAction =
   | { type: 'say'; utterance: Utterance }
   | { type: 'ask'; utteranceId: string; question: string; seq: number }
-  | { type: 'answered'; utteranceId: string; answer: GraphAnswer }
-  | { type: 'answerFailed'; utteranceId: string; error: string }
+  | { type: 'intent'; utteranceId: string; intent: Intent }
+  | { type: 'resolved'; utteranceId: string; result: ActionResult }
+  | { type: 'failed'; utteranceId: string; error: string }
+  | { type: 'task'; task: TaskResult }
   | { type: 'judged'; utteranceId: string; seq: number; result: RelevanceResult }
   | { type: 'pin'; kind: 'card' | 'person'; id: string; facet?: Facet }
+  | { type: 'show'; utteranceId: string }
   | { type: 'arm'; armed: boolean }
   | { type: 'dismiss' }
+  | { type: 'restore'; state: Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks'> }
   | { type: 'reset' }
 
-const EMPTY: MeetingState = { utterances: [], current: null, history: [], answers: {}, seq: 0, armed: false, thinking: 0 }
+const EMPTY: MeetingState = { utterances: [], current: null, history: [], results: {}, pendingTasks: {}, fresh: [], seq: 0, armed: false, thinking: 0 }
 
 const sameTarget = (a: Shown, b: Shown) => a.kind === b.kind && a.id === b.id && (a.kind !== 'card' || a.facet === b.facet)
 
 function pushHistory(history: Shown[], next: Shown): Shown[] {
-  return [next, ...history.filter((h) => !sameTarget(h, next))].slice(0, 8)
+  return [next, ...history.filter((h) => !sameTarget(h, next))].slice(0, 10)
 }
 
 function reducer(state: MeetingState, action: MeetingAction): MeetingState {
   switch (action.type) {
     case 'say': {
       const pending = !action.utterance.skipped
-      return { ...state, utterances: [...state.utterances, { ...action.utterance, pending }].slice(-60), thinking: state.thinking + (pending ? 1 : 0) }
+      return { ...state, utterances: [...state.utterances, { ...action.utterance, pending }].slice(-200), thinking: state.thinking + (pending ? 1 : 0) }
     }
     case 'ask': {
-      // An open question: the answer card appears at once and fills in when the graph replies.
-      const current: Shown = { kind: 'answer', id: action.utteranceId, facet: 'general', utteranceId: action.utteranceId, seq: action.seq }
-      return {
-        ...state,
-        current,
-        history: pushHistory(state.history, current),
-        answers: { ...state.answers, [action.utteranceId]: { status: 'loading', question: action.question } },
-        thinking: state.thinking + 1,
-      }
+      // The result card appears at once and fills in when the action lands.
+      const current: Shown = { kind: 'result', id: action.utteranceId, facet: 'general', utteranceId: action.utteranceId, seq: action.seq }
+      return { ...state, current, history: pushHistory(state.history, current), results: { ...state.results, [action.utteranceId]: { status: 'loading', question: action.question } }, thinking: state.thinking + 1 }
     }
-    case 'answered': {
+    case 'intent': {
+      const entry = state.results[action.utteranceId]
+      if (!entry || entry.status !== 'loading') return state
+      return { ...state, results: { ...state.results, [action.utteranceId]: { ...entry, intent: action.intent } } }
+    }
+    case 'resolved': {
+      const entry = state.results[action.utteranceId]
+      const question = entry?.question ?? action.result.question
+      const results = { ...state.results, [action.utteranceId]: { status: 'done' as const, question, intent: action.result.intent, result: action.result } }
+      const pendingTasks = action.result.kind === 'task' && (action.result.status === 'queued' || action.result.status === 'running') ? { ...state.pendingTasks, [action.result.taskId]: action.utteranceId } : state.pendingTasks
+      return { ...state, results, pendingTasks, thinking: Math.max(0, state.thinking - 1) }
+    }
+    case 'failed': {
+      const entry = state.results[action.utteranceId]
       return {
         ...state,
-        answers: { ...state.answers, [action.utteranceId]: { status: 'done', answer: action.answer } },
+        results: { ...state.results, [action.utteranceId]: { status: 'error', question: entry?.question ?? '', intent: entry?.intent, error: action.error } },
         thinking: Math.max(0, state.thinking - 1),
       }
     }
-    case 'answerFailed': {
-      const previous = state.answers[action.utteranceId]
-      const question = previous && previous.status !== 'done' ? previous.question : ''
-      return {
-        ...state,
-        answers: { ...state.answers, [action.utteranceId]: { status: 'error', question, error: action.error } },
-        thinking: Math.max(0, state.thinking - 1),
+    case 'task': {
+      const utteranceId = state.pendingTasks[action.task.taskId]
+      if (!utteranceId) return state
+      const entry = state.results[utteranceId]
+      const results = { ...state.results, [utteranceId]: { status: 'done' as const, question: entry?.question ?? action.task.question, intent: action.task.intent, result: action.task } }
+      const finished = action.task.status === 'done' || action.task.status === 'failed'
+      if (!finished) return { ...state, results }
+      const { [action.task.taskId]: _, ...pendingTasks } = state.pendingTasks
+      const onScreen = state.current?.kind === 'result' && state.current.id === utteranceId
+      if (!state.current) {
+        // Nothing else on screen: show the finished document right away.
+        return { ...state, results, pendingTasks, current: { kind: 'result', id: utteranceId, facet: 'general', utteranceId, seq: state.seq } }
       }
+      // Otherwise it waits in the tray, highlighted until someone opens it.
+      return { ...state, results, pendingTasks, fresh: onScreen ? state.fresh : [...state.fresh.filter((id) => id !== utteranceId), utteranceId] }
     }
     case 'judged': {
       const utterances = state.utterances.map((u) => (u.id === action.utteranceId ? { ...u, pending: false, result: action.result } : u))
@@ -108,9 +139,9 @@ function reducer(state: MeetingState, action: MeetingAction): MeetingState {
       if (r.action === 'show' && id && r.target === 'person' && action.seq >= (current?.seq ?? -1)) {
         // A person beats the open answer: the profile card is the better screen for "who is X".
         current = { kind: 'person', id, facet: 'general', utteranceId: action.utteranceId, seq: action.seq }
-        history = pushHistory(history.filter((h) => !(h.kind === 'answer' && h.id === action.utteranceId)), current)
+        history = pushHistory(history.filter((h) => !(h.kind === 'result' && h.id === action.utteranceId)), current)
       } else if (r.mode === 'ambient' && r.action === 'show' && id && r.target && action.seq > (current?.seq ?? -1)) {
-        // Ambient mode only: topic cards surface on their own. When addressed, the graph answer is the single source of truth.
+        // Ambient mode only: topic cards surface on their own.
         current = { kind: r.target, id, facet: r.facet.id, utteranceId: action.utteranceId, seq: action.seq }
         history = pushHistory(history, current)
       }
@@ -121,12 +152,51 @@ function reducer(state: MeetingState, action: MeetingAction): MeetingState {
       const current: Shown = { kind: action.kind, id: action.id, facet: action.facet ?? 'general', utteranceId: '', seq }
       return { ...state, seq, current, history: pushHistory(state.history, current) }
     }
+    case 'show': {
+      const seq = state.seq + 1
+      const current: Shown = { kind: 'result', id: action.utteranceId, facet: 'general', utteranceId: action.utteranceId, seq }
+      return { ...state, seq, current, history: pushHistory(state.history, current), fresh: state.fresh.filter((id) => id !== action.utteranceId) }
+    }
     case 'arm':
       return { ...state, armed: action.armed }
     case 'dismiss':
       return { ...state, current: null, armed: false }
+    case 'restore':
+      return { ...EMPTY, ...action.state }
     case 'reset':
       return EMPTY
+  }
+}
+
+const STORAGE_KEY = 'bolek-meeting-v1'
+
+interface Persisted extends Pick<MeetingState, 'utterances' | 'results' | 'history' | 'seq' | 'pendingTasks'> {
+  scenarioId: string
+  cursor: number
+  mode: ListeningMode
+}
+
+function loadPersisted(): Persisted | null {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<Persisted>
+    if (!Array.isArray(parsed.utterances)) return null
+    // Anything still loading when the page went away is gone for good; running background tasks are polled again.
+    const results: MeetingState['results'] = {}
+    for (const [k, v] of Object.entries(parsed.results ?? {})) if (v.status === 'done') results[k] = v
+    return {
+      utterances: parsed.utterances.map((u) => ({ ...u, pending: false })),
+      results,
+      history: parsed.history ?? [],
+      seq: parsed.seq ?? 0,
+      pendingTasks: parsed.pendingTasks ?? {},
+      scenarioId: parsed.scenarioId ?? SCENARIOS[0]!.id,
+      cursor: parsed.cursor ?? 0,
+      mode: parsed.mode ?? 'wake',
+    }
+  } catch {
+    return null
   }
 }
 
@@ -146,10 +216,13 @@ const EMPTY_RESULT = (mode: RelevanceResult['mode'], error?: string): RelevanceR
   topic: { id: null, confidence: 0, probabilities: {} },
   person: { id: null, confidence: 0 },
   facet: { id: 'general', confidence: 0 },
+  intent: { id: 'general', confidence: 0 },
   action: 'none',
   target: null,
   error,
 })
+
+const toTranscript = (utterances: Utterance[]): TranscriptLine[] => utterances.map((u) => ({ id: u.id, speaker: u.speaker, text: u.text, at: u.at, addressed: u.addressed }))
 
 function MeetingScreen() {
   const [state, dispatch] = useReducer(reducer, EMPTY)
@@ -165,6 +238,32 @@ function MeetingScreen() {
   const seq = useRef(0)
   const stateRef = useRef(state)
   stateRef.current = state
+
+  // Restore the meeting after a reload, then keep saving it.
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    const saved = loadPersisted()
+    if (saved) {
+      const { scenarioId: sid, cursor: c, mode: m, ...rest } = saved
+      dispatch({ type: 'restore', state: rest })
+      seq.current = rest.seq + rest.utterances.length
+      if (SCENARIOS.some((s) => s.id === sid)) setScenarioId(sid)
+      setCursor(c)
+      setMode(m)
+    }
+  }, [])
+  useEffect(() => {
+    if (!restored.current) return
+    try {
+      const { utterances, results, history, seq: s, pendingTasks } = state
+      const blob: Persisted = { utterances, results, history, seq: s, pendingTasks, scenarioId, cursor, mode }
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(blob))
+    } catch {
+      /* storage full or blocked: the meeting simply is not persisted */
+    }
+  }, [state, scenarioId, cursor, mode])
 
   const meetingInfo = useMemo(
     () => ({ title: scenario.title, goal: scenario.goal, participants: scenario.participantIds.map(speakerLabel) }),
@@ -204,24 +303,50 @@ function MeetingScreen() {
 
       dispatch({ type: 'say', utterance: { ...base, addressed } })
       const judgeMode = addressed ? 'command' : 'ambient'
-      const earlier = stateRef.current.utterances.slice(-5).map((u) => ({ speaker: u.speaker, text: u.text }))
-      const recent = [...earlier, { speaker, text: command }]
+      const before = stateRef.current.utterances
+      const recent = [...before.slice(-5).map((u) => ({ speaker: u.speaker, text: u.text })), { speaker, text: command }]
+      const transcript = [...toTranscript(before), { id, speaker, text: command, at: base.at, addressed }]
 
-      // Jev: is this about a known person or topic card, and from which angle?
+      if (addressed) dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
+
+      // Jev first: is this about a person, and what kind of request is it?
       judgeUtterance({ data: { meeting: meetingInfo, recent, mode: judgeMode } })
-        .then((result) => dispatch({ type: 'judged', utteranceId: id, seq: mySeq, result }))
-        .catch((err: unknown) => dispatch({ type: 'judged', utteranceId: id, seq: mySeq, result: EMPTY_RESULT(judgeMode, err instanceof Error ? err.message : String(err)) }))
-
-      // Addressed directly: also ask the whole company graph, in parallel.
-      if (addressed) {
-        dispatch({ type: 'ask', utteranceId: id, question: command, seq: mySeq })
-        askGraph({ data: { question: command, recent: earlier.map((t) => `${t.speaker}: ${t.text}`) } })
-          .then((answer) => dispatch({ type: 'answered', utteranceId: id, answer }))
-          .catch((err: unknown) => dispatch({ type: 'answerFailed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
-      }
+        .catch((err: unknown) => EMPTY_RESULT(judgeMode, err instanceof Error ? err.message : String(err)))
+        .then((result) => {
+          dispatch({ type: 'judged', utteranceId: id, seq: mySeq, result })
+          if (!addressed) return
+          if (result.action === 'show' && result.target === 'person') {
+            // The person card is the answer; no further action needed.
+            dispatch({ type: 'failed', utteranceId: id, error: 'person' })
+            return
+          }
+          const intent: Intent = result.intent.id === 'person' ? 'data' : result.intent.id
+          dispatch({ type: 'intent', utteranceId: id, intent })
+          return runAction({ data: { intent, request: command, transcript } })
+            .then((action) => dispatch({ type: 'resolved', utteranceId: id, result: action }))
+            .catch((err: unknown) => dispatch({ type: 'failed', utteranceId: id, error: err instanceof Error ? err.message : String(err) }))
+        })
     },
     [meetingInfo, mode],
   )
+
+  // Poll background tasks while any are running.
+  const pendingKey = Object.keys(state.pendingTasks).join(',')
+  useEffect(() => {
+    if (!pendingKey) return
+    const ids = pendingKey.split(',')
+    const tick = () => {
+      for (const taskId of ids) {
+        getTask({ data: { taskId } })
+          .then((task) => {
+            if (task) dispatch({ type: 'task', task })
+          })
+          .catch(() => {})
+      }
+    }
+    const id = window.setInterval(tick, 2000)
+    return () => window.clearInterval(id)
+  }, [pendingKey])
 
   const speech = useTranscription((text) => say('Mikrofon', text))
   const listening = speech.listening
@@ -261,6 +386,11 @@ function MeetingScreen() {
     setStartedAt(null)
     setElapsed(0)
     dispatch({ type: 'reset' })
+    try {
+      window.localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
   }, [speech])
 
   const changeScenario = (id: string) => {
@@ -274,6 +404,8 @@ function MeetingScreen() {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return
+      // A focused button already acts on Space; do not also advance the script.
+      if (target && (target.tagName === 'BUTTON' || target.closest('button'))) return
       if (e.code === 'Space') {
         e.preventDefault()
         stepScenario()
@@ -298,24 +430,63 @@ function MeetingScreen() {
   const scriptDone = cursor >= scenario.lines.length
   const currentCard = state.current?.kind === 'card' ? cardById(state.current.id) : undefined
   const currentPerson = state.current?.kind === 'person' ? personCardById(state.current.id) : undefined
-  const currentAnswer = state.current?.kind === 'answer' ? state.answers[state.current.id] : undefined
-  const showing = Boolean(state.current && (currentCard || currentPerson || currentAnswer))
+  const currentEntry = state.current?.kind === 'result' ? state.results[state.current.id] : undefined
+  const showing = Boolean(state.current && (currentCard || currentPerson || currentEntry))
   const trigger = state.current ? state.utterances.find((u) => u.id === state.current!.utteranceId) : undefined
   const triggeredBy = trigger ? { speaker: trigger.speaker, text: trigger.text } : undefined
   const checks = state.utterances.filter((u) => u.expect !== undefined && (u.result || u.skipped))
   const passed = checks.filter((u) => expectedId(u) === shownId(u.result)).length
   const live = listening || playing
-  const openCard = (cardId: string, facet?: Facet) => dispatch({ type: 'pin', kind: 'card', id: cardId, facet })
+  const transcript = useMemo(() => toTranscript(state.utterances), [state.utterances])
+  const runningTasks = pendingKey ? pendingKey.split(',').length : 0
 
   const orbState: OrbState = state.thinking > 0 ? 'thinking' : state.armed ? 'speaking' : live ? 'listening' : 'idle'
   const status = state.thinking > 0 ? 'Sprawdzam' : state.armed ? `${ASSISTANT_NAME} słucha` : live ? (mode === 'wake' ? `Czekam na „${ASSISTANT_NAME}”` : 'Słucham') : 'Gotowy'
 
+  const trayItems: TrayItem[] = state.history
+    .filter((h) => !(state.current && sameTarget(state.current, h)))
+    .slice(0, 6)
+    .flatMap((h): TrayItem[] => {
+      const key = `${h.kind}-${h.id}-${h.facet}`
+      if (h.kind === 'person') {
+        const p = personCardById(h.id)
+        return p ? [{ key, kind: 'person', title: p.name, subtitle: p.role, status: 'done' }] : []
+      }
+      if (h.kind === 'card') {
+        const c = cardById(h.id)
+        return c ? [{ key, kind: 'card', title: c.title, subtitle: FACET_LABEL[h.facet], status: 'done' }] : []
+      }
+      const e = state.results[h.id]
+      if (!e) return []
+      const fresh = state.fresh.includes(h.id)
+      if (e.status === 'loading') return [{ key, kind: (e.intent ?? 'data') as TrayItem['kind'], title: e.question, status: 'running' }]
+      if (e.status === 'error') return e.error === 'person' ? [] : [{ key, kind: (e.intent ?? 'general') as TrayItem['kind'], title: e.question, subtitle: 'nie udało się', status: 'done' }]
+      const r = e.result
+      if (r.kind === 'task') {
+        const running = r.status === 'queued' || r.status === 'running'
+        return [{ key, kind: 'report', title: r.title ?? r.question, subtitle: running ? undefined : r.question, status: running ? 'running' : fresh ? 'fresh' : 'done', seconds: running ? Math.round((Date.now() - r.startedAt) / 1000) : undefined }]
+      }
+      if (r.kind === 'note') return [{ key, kind: 'meeting', title: r.title, subtitle: r.question, status: fresh ? 'fresh' : 'done' }]
+      return [{ key, kind: r.intent as TrayItem['kind'], title: r.headline || r.question, subtitle: r.headline ? r.question : undefined, status: fresh ? 'fresh' : 'done' }]
+    })
+  const openTrayItem = (item: TrayItem) => {
+    const h = state.history.find((x) => `${x.kind}-${x.id}-${x.facet}` === item.key)
+    if (!h) return
+    if (h.kind === 'result') dispatch({ type: 'show', utteranceId: h.id })
+    else dispatch({ type: 'pin', kind: h.kind, id: h.id, facet: h.facet })
+  }
+
   const historyLabel = (h: Shown): string | null => {
     if (h.kind === 'person') return personCardById(h.id)?.name ?? null
     if (h.kind === 'card') return cardById(h.id) ? `${cardById(h.id)!.title} · ${FACET_LABEL[h.facet]}` : null
-    const a = state.answers[h.id]
-    if (!a) return null
-    const q = a.status === 'done' ? a.answer.headline || a.answer.question : a.question
+    const e = state.results[h.id]
+    if (!e) return null
+    let q = e.question
+    if (e.status === 'done') {
+      if (e.result.kind === 'note') q = e.result.title
+      else if (e.result.kind === 'task') q = e.result.title ?? e.question
+      else if (e.result.headline) q = e.result.headline
+    }
     return q.length > 40 ? `${q.slice(0, 38)}…` : q
   }
 
@@ -352,13 +523,15 @@ function MeetingScreen() {
           {listening ? <MicOffIcon /> : <MicIcon />}
           {speech.status === 'connecting' ? 'Łączę…' : listening ? 'Stop' : 'Mikrofon'}
         </Button>
-        <Button size="icon-sm" variant="ghost" onClick={reset} title="Od nowa">
+        <Button size="icon-sm" variant="ghost" onClick={reset} title="Od nowa (czyści transkrypcję)">
           <RotateCcwIcon />
         </Button>
         <span className="min-w-0 flex-1 truncate pl-2 text-xs text-muted-foreground">
           {!scriptDone && `Linia ${cursor} z ${scenario.lines.length} · `}
           <span className="font-mono tabular-nums">{formatDuration(elapsed)}</span>
+          {state.utterances.length > 0 && ` · ${state.utterances.length} wypowiedzi`}
           {speech.engine && listening && ` · ${speech.engine === 'grok' ? 'Grok Voice Transcribe' : 'mikrofon przeglądarki'}`}
+          {runningTasks > 0 && ` · ${runningTasks} zadanie w tle`}
           {speech.error && <span className="text-destructive"> · {speech.error}</span>}
           {debug && checks.length > 0 && (
             <span className="font-mono">
@@ -378,6 +551,9 @@ function MeetingScreen() {
       </header>
 
       <main className="relative min-h-0 flex-1">
+        {/* Left: what moved to the background. */}
+        <Tray items={trayItems} onOpen={openTrayItem} className="absolute top-1/2 left-4 z-20 w-56 -translate-y-1/2 md:left-6" />
+
         {/* The orb: centre stage when idle, docked at the top while something is shown. */}
         <div
           aria-hidden={showing}
@@ -399,16 +575,16 @@ function MeetingScreen() {
             <h1 className="text-3xl font-semibold tracking-tight text-balance">{state.armed ? 'O co chodzi?' : scenario.title}</h1>
             <p className="max-w-xl text-base leading-relaxed text-muted-foreground">
               {state.armed
-                ? 'Zapytaj o osobę, koszt, właściciela, termin, wynik albo cokolwiek z danych firmy.'
+                ? 'Pytaj o ludzi, dane firmy, to spotkanie, internet albo poproś o raport.'
                 : mode === 'wake'
-                  ? `Powiedz „${ASSISTANT_NAME}, ile zapłaciliśmy za Pipedrive w sierpniu?”. Skończ „${ASSISTANT_NAME}, dzięki”.`
+                  ? `„${ASSISTANT_NAME}, ile zapłaciliśmy za Pipedrive w sierpniu?” · „${ASSISTANT_NAME}, zrób punkty z ostatniego tematu” · „${ASSISTANT_NAME}, dzięki”.`
                   : scenario.goal}
             </p>
           </div>
         </div>
 
         {showing && state.current && (
-          <div key={`${state.current.kind}-${state.current.id}-${state.current.facet}-${state.current.seq}`} className="absolute inset-0 overflow-y-auto px-6 pt-16 pb-8 md:px-10">
+          <div key={`${state.current.kind}-${state.current.id}-${state.current.facet}-${state.current.seq}`} className={cn('absolute inset-0 overflow-y-auto px-6 pt-16 pb-8 md:px-10', trayItems.length > 0 && 'md:pl-[16.5rem]')}>
             <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-3 duration-500 delay-150 fill-mode-both">
               <div className="mb-2 flex justify-end">
                 <Button variant="ghost" size="sm" onClick={() => dispatch({ type: 'dismiss' })} title={`Albo powiedz „${ASSISTANT_NAME}, dzięki”`}>
@@ -416,16 +592,18 @@ function MeetingScreen() {
                 </Button>
               </div>
               {currentCard && <KnowledgeCardView card={currentCard} facet={state.current.facet} triggeredBy={triggeredBy} />}
-              {currentPerson && <PersonCardView person={currentPerson} triggeredBy={triggeredBy} onOpenCard={(id) => openCard(id)} />}
-              {currentAnswer && (
-                <AnswerCardView entry={currentAnswer} triggeredBy={triggeredBy} debug={debug} />
-              )}
+              {currentPerson && <PersonCardView person={currentPerson} triggeredBy={triggeredBy} onOpenCard={(id) => dispatch({ type: 'pin', kind: 'card', id })} />}
+              {currentEntry?.status === 'loading' && <AnswerLoadingView question={currentEntry.question} intent={currentEntry.intent} triggeredBy={triggeredBy} />}
+              {currentEntry?.status === 'error' && currentEntry.error !== 'person' && <AnswerErrorView question={currentEntry.question} error={currentEntry.error} />}
+              {currentEntry?.status === 'done' && currentEntry.result.kind === 'answer' && <AnswerCardView result={currentEntry.result} triggeredBy={triggeredBy} debug={debug} />}
+              {currentEntry?.status === 'done' && currentEntry.result.kind === 'note' && <NoteCardView note={currentEntry.result} transcript={transcript} triggeredBy={triggeredBy} debug={debug} />}
+              {currentEntry?.status === 'done' && currentEntry.result.kind === 'task' && <ReportCardView task={currentEntry.result} triggeredBy={triggeredBy} debug={debug} />}
             </div>
           </div>
         )}
 
         {debug && (
-          <aside className="absolute inset-y-0 right-0 z-20 flex w-[22rem] flex-col border-l border-border bg-sidebar/95 backdrop-blur">
+          <aside className="absolute inset-y-0 right-0 z-20 flex w-[22rem] flex-col border-l border-border bg-background/95 backdrop-blur">
             <div className="flex items-center justify-between border-b border-border px-3 py-2 text-xs font-medium">
               <span>Transkrypcja · diagnostyka</span>
               <Button size="icon-xs" variant="ghost" onClick={() => setDebug(false)} aria-label="Zamknij">
@@ -443,8 +621,7 @@ function MeetingScreen() {
                       key={`${h.kind}-${h.id}-${h.facet}`}
                       size="xs"
                       variant={active ? 'secondary' : 'outline'}
-                      onClick={() => (h.kind === 'answer' ? dispatch({ type: 'ask', utteranceId: h.id, question: '', seq: h.seq }) : dispatch({ type: 'pin', kind: h.kind, id: h.id, facet: h.facet }))}
-                      disabled={h.kind === 'answer'}
+                      onClick={() => (h.kind === 'result' ? dispatch({ type: 'show', utteranceId: h.id }) : dispatch({ type: 'pin', kind: h.kind, id: h.id, facet: h.facet }))}
                     >
                       {label}
                     </Button>
@@ -459,7 +636,7 @@ function MeetingScreen() {
         )}
       </main>
 
-      {/* One caption line: what was said last, and what is being heard now. */}
+      {/* One caption line: what was said last, what is being heard now, and a finished task waiting to be seen. */}
       <footer className="flex h-14 shrink-0 items-center gap-4 border-t border-border/60 px-6">
         <div className="flex min-w-0 flex-1 items-baseline gap-3" aria-live="polite">
           {speech.interim ? (
@@ -481,7 +658,7 @@ function MeetingScreen() {
           <input
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
-            placeholder={`${ASSISTANT_NAME}, ile…`}
+            placeholder={`${ASSISTANT_NAME}, …`}
             aria-label="Wypowiedź"
             className="h-8 w-64 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           />
@@ -525,6 +702,7 @@ function ModeToggle({ mode, onChange }: { mode: ListeningMode; onChange: (m: Lis
 function EngineBadge({ result }: { result: RelevanceResult | undefined }) {
   if (!result) return null
   const jev = result.engine === 'jev'
+  const spec = result.mode === 'command' ? intentById(result.intent.id) : undefined
   return (
     <span
       className={cn('hidden items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium lg:inline-flex', jev ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground')}
@@ -532,6 +710,7 @@ function EngineBadge({ result }: { result: RelevanceResult | undefined }) {
     >
       <span className={cn('size-1.5 rounded-full', jev ? 'bg-primary' : 'bg-muted-foreground')} aria-hidden />
       {jev ? `Jev · ${result.latencyMs} ms` : 'Tryb offline'}
+      {spec && <span className="text-muted-foreground">· {spec.id}</span>}
     </span>
   )
 }

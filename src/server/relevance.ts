@@ -1,5 +1,6 @@
 import { FACET_HINT, KNOWLEDGE_CARDS, type Facet } from '../demo/knowledge.ts'
 import { PEOPLE_CARDS } from '../demo/people.ts'
+import { INTENTS, type Intent } from '../lib/intents.ts'
 
 /**
  * Server-only: decides what the meeting screen should show for the latest
@@ -44,6 +45,8 @@ export interface RelevanceResult {
   topic: { id: string | null; confidence: number; probabilities: Record<string, number> }
   person: { id: string | null; confidence: number }
   facet: { id: Facet; confidence: number }
+  /** Command mode: what kind of request this is. */
+  intent: { id: Intent; confidence: number }
   action: RelevanceAction
   /** What `show` refers to: `topic.id` for a card, `person.id` for a person. */
   target: RelevanceTarget | null
@@ -170,6 +173,11 @@ function buildRequest(input: RelevanceInput, mode: JudgeMode) {
       instructions: 'Which angle does latest_utterance ask about?',
       criteria: FACET_HINT as Record<string, string>,
     },
+    intent: {
+      type: 'choice' as const,
+      instructions: 'What kind of request is latest_utterance? Pick the action the assistant should take.',
+      criteria: Object.fromEntries(INTENTS.map((i) => [i.id, i.hint])) as Record<string, string>,
+    },
   }
 
   return { state, questions }
@@ -188,6 +196,7 @@ interface JevAnswers {
   person: ChoiceAnswer
   topic: ChoiceAnswer
   facet: ChoiceAnswer
+  intent: ChoiceAnswer
 }
 
 async function withJev(input: RelevanceInput, t: Transport, started: number): Promise<RelevanceResult> {
@@ -224,6 +233,7 @@ async function withJev(input: RelevanceInput, t: Transport, started: number): Pr
   const topic = pick(answers.topic)
   const person = pick(answers.person)
   const facet = (FACETS.includes(answers.facet.choice as Facet) ? answers.facet.choice : 'general') as Facet
+  const intentId = (INTENTS.some((i) => i.id === answers.intent.choice) ? answers.intent.choice : 'general') as Intent
 
   const scores: Scores = {
     needsInfo: answers.needs_info.noul,
@@ -245,9 +255,17 @@ async function withJev(input: RelevanceInput, t: Transport, started: number): Pr
     topic: { id: topic.id, confidence: topic.confidence, probabilities: topic.probabilities },
     person: { id: person.id, confidence: person.confidence },
     facet: { id: facet, confidence: answers.facet.confidence ?? 0 },
+    intent: { id: intentId, confidence: answers.intent.confidence ?? 0 },
     ...decide(mode, scores),
   }
 }
+
+const INTENT_MARKERS: [Intent, string[]][] = [
+  ['meeting', ['podsumuj', 'podsumowanie', 'bullet', 'punkty', 'notatk', 'co ustaliliśmy', 'co powiedział', 'co mówił', 'ostatni temat', 'omawialiśmy', 'action item', 'zadania z', 'streszcz']],
+  ['report', ['przygotuj', 'napisz', 'zrób raport', 'raport', 'dokument', 'wykres', 'wizualizacj', 'prezentacj', 'mail do', 'maila do', 'plan ']],
+  ['web', ['w internecie', 'wygoogluj', 'sprawdź w sieci', 'kurs ', 'newsy', 'wiadomości', 'konkurenc', 'na rynku', 'ustaw', 'przepis', 'cena rynkowa']],
+  ['person', ['kim jest', 'kto to', 'czym się zajmuje', 'nad czym pracuje', 'za co odpowiada']],
+]
 
 const QUESTION_MARKERS = ['?', 'ile ', 'kto ', 'kim ', 'kiedy', 'do kiedy', 'jak ', 'czy ', 'co z ', 'jakie ', 'który', 'która', 'gdzie', 'dlaczego', 'nad czym', 'za co']
 const PERSON_MARKERS = ['kim jest', 'kto to', 'kto jest', 'czym się zajmuje', 'nad czym', 'pracuje', 'za co odpowiada', 'co robi']
@@ -319,6 +337,15 @@ export function fallback(input: RelevanceInput, elapsedMs: number): RelevanceRes
     asksPerson,
   }
 
+  let intent: Intent = topic.score > 0 || person.score > 0 ? 'data' : 'general'
+  for (const [id, markers] of INTENT_MARKERS) {
+    if (markers.some((m) => latest.includes(m))) {
+      intent = id
+      break
+    }
+  }
+  if (intent === 'person' && !person.id) intent = 'data'
+
   return {
     engine: 'fallback',
     latencyMs: Math.round(elapsedMs),
@@ -327,6 +354,7 @@ export function fallback(input: RelevanceInput, elapsedMs: number): RelevanceRes
     topic: { id: topic.id, confidence: topic.confidence, probabilities: topicScores },
     person: { id: person.id, confidence: person.confidence },
     facet: { id: facet, confidence: facetHits > 0 ? 0.8 : 0.3 },
+    intent: { id: intent, confidence: 0.6 },
     ...decide(mode, scores),
   }
 }

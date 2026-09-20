@@ -24,7 +24,8 @@
     "jev:eval": "node --env-file=.env scripts/jev-eval.ts",
     "stt:proxy": "node --env-file=.env scripts/stt-proxy.ts",
     "stt:smoke": "node scripts/stt-smoke.ts",
-    "ask": "node --env-file=.env scripts/ask.ts"
+    "ask": "node --env-file=.env scripts/ask.ts",
+    "intent-eval": "node --env-file=.env scripts/intent-eval.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

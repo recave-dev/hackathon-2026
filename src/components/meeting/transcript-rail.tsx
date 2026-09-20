@@ -28,7 +28,9 @@ export interface Utterance {
 /** What the assistant showed for this utterance, as an id, or null. */
 export const shownId = (r: RelevanceResult | undefined): string | null => {
   if (!r || r.action !== 'show') return null
-  return r.target === 'person' ? r.person.id : r.topic.id
+  if (r.target === 'person') return r.person.id
+  // When addressed, topic matches are not shown; the graph answer is.
+  return r.mode === 'command' ? null : r.topic.id
 }
 
 export const expectedId = (u: Utterance): string | null | undefined => (u.expect === undefined ? undefined : (u.expect?.person ?? u.expect?.card ?? null))
@@ -62,7 +64,18 @@ function UtteranceRow({ utterance, debug }: { utterance: Utterance; debug: boole
   const mentioned = r?.action === 'mention'
   const card = cardById(r?.topic.id)
   const person = personCardById(r?.person.id)
-  const label = shown ? (r!.target === 'person' ? person?.name : card ? `${card.title} · ${FACET_LABEL[r!.facet.id]}` : null) : null
+  // Addressed lines are routed by intent; ambient lines by topic card.
+  const label = shown
+    ? r!.target === 'person'
+      ? person?.name
+      : r!.mode === 'command'
+        ? `→ ${r!.intent.id}`
+        : card
+          ? `${card.title} · ${FACET_LABEL[r!.facet.id]}`
+          : null
+    : r?.mode === 'command'
+      ? `→ ${r.intent.id}`
+      : null
   const expected = expectedId(utterance)
   const check = expected === undefined ? undefined : expected === shownId(r)
 
@@ -82,7 +95,6 @@ function UtteranceRow({ utterance, debug }: { utterance: Utterance; debug: boole
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           {utterance.pending && <Spinner className="size-3" />}
           {label && <span className="rounded-md bg-background/70 px-1.5 py-0.5 font-medium text-foreground">{label}</span>}
-          {utterance.addressed && r && r.action === 'none' && <span className="rounded-md bg-background/70 px-1.5 py-0.5">nie znalazłem</span>}
           {utterance.dismissed && <span className="rounded-md bg-background/70 px-1.5 py-0.5">schowano</span>}
           {mentioned && card && <span className="rounded-md bg-background/70 px-1.5 py-0.5">wzmianka: {card.title}</span>}
           {debug && check !== undefined && (r || utterance.skipped) && (
@@ -97,7 +109,7 @@ function UtteranceRow({ utterance, debug }: { utterance: Utterance; debug: boole
         <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
           {r.engine}
           {r.via ? `/${r.via}` : ''} · {r.mode} · {r.latencyMs} ms · info {r.needsInfo.toFixed(2)} · topic {r.topic.id ?? 'none'} {r.topic.confidence.toFixed(2)} · person {r.person.id ?? 'none'}{' '}
-          {r.person.confidence.toFixed(2)} · {r.facet.id}
+          {r.person.confidence.toFixed(2)} · {r.facet.id}{r.mode === 'command' ? ` · intent ${r.intent.id} ${r.intent.confidence.toFixed(2)}` : ''}
           {r.error ? ` · błąd: ${r.error}` : ''}
         </p>
       )}
