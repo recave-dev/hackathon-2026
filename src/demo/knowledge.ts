@@ -48,9 +48,30 @@ export interface Scenario {
   participantIds: Id[]
   mode: ListeningMode
   lines: ScenarioLine[]
+  /** Which company graph the assistant answers from; `aster` when omitted. */
+  company?: 'aster' | 'bielsko'
 }
 
 export const SCENARIOS: Scenario[] = [
+  {
+    id: 'bielsko-meetup-003',
+    title: 'bielsko.ai — meetup 003',
+    goal: 'Planujemy trzeci meetup: ile osób, które miejsce (NovaPatria, Kawiarnia Grunt, Cavatina Hall), statystyki 001 vs 002, grafika, strona i mail z podsumowaniem.',
+    participantIds: ['p-michal', 'p-tomasz'],
+    mode: 'wake',
+    company: 'bielsko',
+    lines: [
+      { id: 'b1', speakerId: 'p-michal', text: 'Siemano, dzisiaj chcemy przegadać kolejny meetup bielsko.ai 003.', expect: null },
+      { id: 'b2', speakerId: 'p-tomasz', text: 'Na 002 mieliśmy 94 zapisanych i 52 osoby na miejscu, więc na 003 celujemy w 100 osób.', expect: null },
+      { id: 'b3', speakerId: 'p-michal', text: 'Bolek, znajdź 3 lokale w Bielsku, które są w stanie pomieścić tyle osób, i porównaj je w tabeli.', expect: null },
+      { id: 'b4', speakerId: 'p-tomasz', text: 'Dobra, idziemy z NovaPatria. Termin: 30 października, godzina 17:00.', expect: null },
+      { id: 'b5', speakerId: 'p-michal', text: 'Bolek, porównaj statystyki meetupu 001 i 002.', expect: null },
+      { id: 'b6', speakerId: 'p-tomasz', text: 'Bolek, zrób grafikę na meetup 003.', expect: null },
+      { id: 'b7', speakerId: 'p-michal', text: 'Bolek, zaktualizuj stronę bielsko.ai: meetup 003 w NovaPatria, 30 października o 17:00.', expect: null },
+      { id: 'b8', speakerId: 'p-tomasz', text: 'Bolek, wyślij email z podsumowaniem do Tomka Kielara.', expect: null },
+      { id: 'b9', speakerId: 'p-michal', text: 'Bolek, wyślij.', expect: null },
+    ],
+  },
   {
     id: 'aster-tools',
     title: 'Zarząd — narzędzia i pilot',

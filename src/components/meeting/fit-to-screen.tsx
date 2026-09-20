@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 /** Below this the text is too small for a TV; the page scrolls inside instead. */
-const MIN_SCALE = 0.55
+const MIN_SCALE = 0.5
 
 /**
  * Shrinks its content so it fits the height it was given. Nobody touches the

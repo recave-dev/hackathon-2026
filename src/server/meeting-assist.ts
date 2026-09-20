@@ -70,9 +70,10 @@ const cleanLines = (input: unknown) =>
 
 /** Feeds transcript lines into the meeting session and refreshes its context digest. */
 export const syncSession = createServerFn({ method: 'POST' })
-  .inputValidator((input: { sessionId: string; title?: string; lines: import('./session.ts').SessionLine[]; reset?: boolean }) => ({
+  .inputValidator((input: { sessionId: string; title?: string; company?: string; lines: import('./session.ts').SessionLine[]; reset?: boolean }) => ({
     sessionId: clean(input?.sessionId, 80) || 'default',
     title: clean(input?.title, 120) || undefined,
+    company: clean(input?.company, 40) || undefined,
     lines: cleanLines(input?.lines),
     reset: Boolean(input?.reset),
   }))
@@ -80,7 +81,7 @@ export const syncSession = createServerFn({ method: 'POST' })
     const { appendLines, clearSession, loadSession } = await import('./session.ts')
     const { refreshDigest } = await import('./context.ts')
     if (data.reset) clearSession(data.sessionId)
-    const session = loadSession(data.sessionId, data.title)
+    const session = loadSession(data.sessionId, data.title, data.company)
     const added = appendLines(session, data.lines)
     void refreshDigest(session)
     return { added, lines: session.lines.length, digest: session.digest }

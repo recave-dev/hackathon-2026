@@ -1,6 +1,6 @@
+import { openGraph } from './graph-answer.ts'
 import { ASSISTANT_NAME } from '../lib/wake-word.ts'
 import { refreshDigest, renderDigest } from './context.ts'
-import { graphCatalog } from './graph-cards.ts'
 import { openrouterKey, type WebSource } from './llm.ts'
 import type { Session } from './session.ts'
 import { TOOLS, recentTranscript, toolByName, type Attachment } from './tools.ts'
@@ -71,21 +71,25 @@ interface Message {
   name?: string
 }
 
-function companyName(): string {
+function companyName(company?: string | null): string {
   try {
-    return graphCatalog().company ?? 'the company'
+    const g = openGraph(company)
+    return g.getGraphSnapshot().nodes.find((n) => n.kind === 'organization' && n.attributes.role === 'company')?.label ?? 'the company'
   } catch {
     return 'the company'
   }
 }
 
 function systemPrompt(session: Session): string {
-  return `You are ${ASSISTANT_NAME}, the assistant sitting in on the board meeting of ${companyName()}, a Polish company. People address you by name; the screen in the room shows your answers. Answer in Polish, the way you would speak in a meeting: short, concrete, numbers and names first, no filler and no preamble.
+  return `You are ${ASSISTANT_NAME}, the assistant sitting in on the board meeting of ${companyName(session.company)}, a Polish company. People address you by name; the screen in the room shows your answers. Answer in Polish, the way you would speak in a meeting: short, concrete, numbers and names first, no filler and no preamble.
 
 How to work:
-- Decide what the request needs. Company facts (costs, invoices, approvals, owners, pilots, customers, decisions) live in the company graph: use company_knowledge (query in English), then get_entity or list_entities to dig further if the first search is thin. Never state a company figure you did not get from a tool.
+- Decide what the request needs. Anything about the company itself lives in the company graph: costs, invoices, approvals, owners, pilots, customers, decisions, events and meetups, venues and offers we collected, partners, statistics, the website. Start with company_knowledge (query in English), then get_entity or list_entities to dig further if the first search is thin. Never state a company figure you did not get from a tool.
+- "Find venues / options / candidates" for our own events or projects means: what have we already gathered? Search company_knowledge first; only if the graph has nothing, use search_web and say the results are from the internet.
+- Comparing two or more things (venues, vendors, editions of an event): get the facts, then compare_table with the criteria as columns; mention in the cells what we know from history (e.g. which venue hosted an earlier edition) and any offer or cost with its source.
 - Questions about this conversation ("what did we decide", "bullet points of the last topic") use meeting_notes or the CONTEXT below; do not search the graph for them.
 - Fresh outside facts (rates, news, competitors) use search_web. General knowledge you may answer directly.
+- Graphics ("zrób grafikę", a poster or banner): generate_image, with the event's name, date, time and venue from the CONTEXT or the graph in the prompt. Website changes ("zaktualizuj stronę"): update_website with the concrete new values; it runs in the background.
 - "Show our landing page" and similar: page_screenshot. If the address is unknown and not configured, ask for it (needs_input=true) instead of guessing.
 - Emails: when a recipient is named, find_contact gives the address; draft_email only prepares; the room confirms sending. Documents: create_document. Charts from numbers you have: chart. Long reports: write_report (background) and say it is being prepared.
 - Use at most a few tool calls; stop as soon as you can answer. If a tool returns nothing useful, say what you could not find rather than inventing.
@@ -127,6 +131,41 @@ const TOOL_ACTIVITY: Record<string, string> = {
   meeting_notes: 'Czytam transkrypcję',
   chart: 'Rysuję wykres',
   write_report: 'Zlecam raport',
+  compare_table: 'Układam porównanie',
+  generate_image: 'Generuję grafikę',
+  update_website: 'Zlecam aktualizację strony',
+}
+
+/** `final_answer(answer="…", bullets=["…"], headline="…")` written as prose: pull the fields out. */
+function parsePseudoFinal(text: string | undefined): Record<string, unknown> | null {
+  if (!text || !/^\s*final_answer\s*\(/.test(text)) return null
+  const field = (name: string): string | undefined => new RegExp(`${name}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`, 's').exec(text)?.[1]?.replace(/\\"/g, '"').replace(/\\n/g, '\n')
+  const bulletsRaw = /bullets\s*=\s*\[([\s\S]*?)\]/.exec(text)?.[1] ?? ''
+  const bullets = [...bulletsRaw.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]!.replace(/\\"/g, '"'))
+  const answer = field('answer')
+  if (!answer) return null
+  return { answer, headline: field('headline') ?? '', bullets, needs_input: /needs_input\s*=\s*[Tt]rue/.test(text) }
+}
+
+/** One chat completion; a response cut off mid-JSON (it happens on long tool calls) is fetched again once. */
+async function completeWithRetry(key: string, payload: string): Promise<{ model?: string; choices?: { message?: Message }[] }> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': `${ASSISTANT_NAME} agent` },
+      body: payload,
+      signal: AbortSignal.timeout(60000),
+    })
+    if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${(await res.text()).slice(0, 300)}`)
+    const text = await res.text()
+    try {
+      return JSON.parse(text) as { model?: string; choices?: { message?: Message }[] }
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw new Error(`OpenRouter returned an unreadable response: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
 }
 
 /** Runs the agent in the background and exposes its progress under a job id. */
@@ -149,6 +188,7 @@ export function startAgentJob(session: Session, request: string): string {
     .catch((err: unknown) => {
       job.status = 'failed'
       job.error = err instanceof Error ? err.message : String(err)
+      console.error('agent job failed', err)
       job.activity = ''
     })
   // Forget finished jobs after a while.
@@ -167,8 +207,10 @@ export async function runAgent(session: Session, request: string, onEvent?: (e: 
   if (!session.digest) await refresh
 
   const tools = [...TOOLS.map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, parameters: t.parameters } })), FINAL_TOOL]
+  const system = systemPrompt(session)
+  if (process.env.AGENT_DEBUG) console.log(`agent: session=${session.id} company=${session.company ?? '-'} model=${agentModel()} tools=${tools.length} prompt=${system.length} chars\n${system.slice(0, 400)}`)
   const messages: Message[] = [
-    { role: 'system', content: systemPrompt(session) },
+    { role: 'system', content: system },
     { role: 'user', content: request },
   ]
   const steps: AgentStep[] = []
@@ -179,14 +221,8 @@ export async function runAgent(session: Session, request: string, onEvent?: (e: 
   let plainAnswer = ''
 
   for (let round = 0; round < MAX_STEPS && !final; round++) {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': `${ASSISTANT_NAME} agent` },
-      body: JSON.stringify({ model: agentModel(), temperature: 0.2, max_tokens: 1200, messages, tools, tool_choice: round === MAX_STEPS - 1 ? { type: 'function', function: { name: 'final_answer' } } : 'auto' }),
-      signal: AbortSignal.timeout(60000),
-    })
-    if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${(await res.text()).slice(0, 300)}`)
-    const body = (await res.json()) as { model?: string; choices?: { message?: Message }[] }
+    const payload = JSON.stringify({ model: agentModel(), temperature: 0.2, max_tokens: 3000, messages, tools, tool_choice: round === MAX_STEPS - 1 ? { type: 'function', function: { name: 'final_answer' } } : 'auto' })
+    const body = await completeWithRetry(key, payload)
     model = body.model ?? model
     const msg = body.choices?.[0]?.message
     if (!msg) throw new Error('Pusta odpowiedź modelu.')
@@ -194,6 +230,12 @@ export async function runAgent(session: Session, request: string, onEvent?: (e: 
 
     if (!msg.tool_calls?.length) {
       plainAnswer = (msg.content ?? '').trim()
+      // Some models write the final call out as text instead of calling it; read it the same way.
+      const pseudo = parsePseudoFinal(plainAnswer)
+      if (pseudo) {
+        final = pseudo
+        plainAnswer = ''
+      }
       break
     }
     for (const call of msg.tool_calls) {
@@ -234,12 +276,14 @@ export async function runAgent(session: Session, request: string, onEvent?: (e: 
     }
   }
 
-  const bullets = Array.isArray(final?.bullets) ? final!.bullets.map(String).filter(Boolean).slice(0, 4) : []
+  // Spoken text on a screen: no Markdown emphasis markers.
+  const plain = (t: string): string => t.replace(/\*\*(.+?)\*\*/g, '$1').replace(/(^|\s)\*(\S[^*]*)\*(?=\s|$)/g, '$1$2')
+  const bullets = Array.isArray(final?.bullets) ? final!.bullets.map((b) => plain(String(b))).filter(Boolean).slice(0, 4) : []
   return {
     kind: 'agent',
     question: request,
     headline: String(final?.headline ?? '').slice(0, 60),
-    answer: String(final?.answer ?? plainAnswer ?? '').trim() || 'Nie udało mi się ułożyć odpowiedzi.',
+    answer: plain(String(final?.answer ?? plainAnswer ?? '')).trim() || 'Nie udało mi się ułożyć odpowiedzi.',
     bullets,
     attachments,
     sources,

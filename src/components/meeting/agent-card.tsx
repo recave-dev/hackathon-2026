@@ -1,4 +1,4 @@
-import { CheckIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, GlobeIcon, MailIcon, SendIcon, SparklesIcon, WrenchIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, GlobeIcon, ImageIcon, MailIcon, SendIcon, SparklesIcon, TableIcon, WrenchIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
@@ -259,6 +259,60 @@ export function AgentCardView({
             )
           case 'chart':
             return <Chart key={i} spec={a.spec} />
+          case 'table':
+            return (
+              <Panel
+                key={i}
+                title={
+                  <span className="inline-flex items-center gap-2">
+                    <TableIcon className="size-4" /> {a.title}
+                  </span>
+                }
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full text-base">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                        {a.columns.map((c, ci) => (
+                          <th key={ci} className="py-2 pr-4">
+                            {c}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {a.rows.map((r, ri) => {
+                        const chosen = a.highlight && r[0]?.toLowerCase().includes(a.highlight.toLowerCase())
+                        return (
+                          <tr key={ri} className={cn('border-b border-border/60 last:border-0', chosen && 'bg-primary/10')}>
+                            {r.map((c, ci) => (
+                              <td key={ci} className={cn('py-2.5 pr-4 align-top leading-snug', ci === 0 && 'font-semibold', chosen && ci === 0 && 'text-primary')}>
+                                {c}
+                                {chosen && ci === 0 && <Pill tone="accent" className="ml-2 align-middle">wybór</Pill>}
+                              </td>
+                            ))}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+            )
+          case 'image':
+            return (
+              <Panel
+                key={i}
+                title={
+                  <span className="inline-flex items-center gap-2">
+                    <ImageIcon className="size-4" /> {a.title}
+                  </span>
+                }
+                caption={a.prompt}
+              >
+                <img src={a.url} alt={a.title} className="w-full rounded-xl border border-border" />
+              </Panel>
+            )
           case 'document':
             return (
               <Panel
@@ -283,7 +337,7 @@ export function AgentCardView({
             )
           case 'task':
             return (
-              <Panel key={i} title="Raport w tle" caption="Pojawi się w zasobniku po lewej, gdy będzie gotowy.">
+              <Panel key={i} title="Pracuję w tle" caption="Postęp widać na karcie po lewej; wynik pojawi się, gdy będzie gotowy.">
                 <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                   <Spinner className="size-3.5" /> {a.task.label}…
                 </p>
@@ -294,7 +348,7 @@ export function AgentCardView({
         }
       })}
 
-      {citations.length > 0 && (
+      {debug && citations.length > 0 && (
         <Panel title="Na czym to opieram" caption="Fragmenty źródeł z grafu firmy, które agent przeczytał.">
           <ol className="flex flex-col gap-2">
             {citations.slice(0, 8).map((c) => (

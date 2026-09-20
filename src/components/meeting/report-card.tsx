@@ -1,4 +1,4 @@
-import { FileTextIcon } from 'lucide-react'
+import { FileTextIcon, GlobeIcon } from 'lucide-react'
 
 import { Pill } from '@/components/desktop/page'
 import { Markdown } from '@/components/meeting/markdown'
@@ -16,7 +16,7 @@ export function ReportCardView({ task, triggeredBy, debug, className }: { task: 
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Pill tone="accent">
-            <FileTextIcon className="size-3" /> Raport
+            {task.category === 'website' ? <GlobeIcon className="size-3" /> : <FileTextIcon className="size-3" />} {task.category === 'website' ? 'Strona' : 'Raport'}
           </Pill>
           {running && (
             <span className="inline-flex items-center gap-1.5">

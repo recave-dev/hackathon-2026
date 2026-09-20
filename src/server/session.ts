@@ -57,6 +57,8 @@ export interface Session {
   digest: ContextDigest | null
   documents: SessionDoc[]
   drafts: EmailDraft[]
+  /** Which company graph this meeting is about (`aster` by default, `bielsko` for the bielsko.ai demo). */
+  company?: string
 }
 
 const DIR = resolve(process.cwd(), process.env.SESSION_DIR ?? '.data/sessions')
@@ -65,7 +67,7 @@ const cache: Map<string, Session> = ((globalThis as { __bolekSessions?: Map<stri
 const safeId = (id: string): string => id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) || 'default'
 const fileFor = (id: string): string => resolve(DIR, `${safeId(id)}.json`)
 
-export function loadSession(id: string, title?: string): Session {
+export function loadSession(id: string, title?: string, company?: string): Session {
   const key = safeId(id)
   const cached = cache.get(key)
   if (cached) return cached
@@ -80,6 +82,7 @@ export function loadSession(id: string, title?: string): Session {
   }
   session ??= { id: key, title: title ?? key, createdAt: Date.now(), updatedAt: Date.now(), lines: [], digest: null, documents: [], drafts: [] }
   if (title && session.title !== title) session.title = title
+  if (company && session.company !== company) session.company = company
   cache.set(key, session)
   return session
 }

@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowLeftIcon, RotateCcwIcon, SendIcon, SparklesIcon, XIcon } from 'lucide-react'
+import { ArrowLeftIcon, RotateCcwIcon, SendIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react'
 
 import { AgentCardView, AgentErrorView, AgentLoadingView } from '@/components/meeting/agent-card'
@@ -9,7 +9,7 @@ import { CardLoadingView, GraphPersonView, TopicCardView } from '@/components/me
 import { PresentationView } from '@/components/meeting/presentation-view'
 import { ReportCardView } from '@/components/meeting/report-card'
 import { TranscriptRail, shownId, type Utterance } from '@/components/meeting/transcript-rail'
-import type { TrayItem } from '@/components/meeting/tray'
+import { Tray, type TrayItem } from '@/components/meeting/tray'
 import { Button } from '@/components/ui/button'
 import { FACET_LABEL, SCENARIOS, type Facet } from '@/demo/knowledge'
 import { PEOPLE } from '@/demo/seed'
@@ -51,6 +51,8 @@ interface MeetingSearch {
   session?: string
   /** Open this presentation in focus mode right away. */
   present?: string
+  /** With `new`: which scripted scenario (and company graph) the session uses. */
+  scenario?: string
 }
 
 export const Route = createFileRoute('/meeting')({
@@ -59,6 +61,7 @@ export const Route = createFileRoute('/meeting')({
     if (search.new === true || search.new === 'true' || search.new === 1 || search.new === '1') out.new = true
     if (typeof search.session === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(search.session)) out.session = search.session
     if (typeof search.present === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(search.present)) out.present = search.present
+    if (typeof search.scenario === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(search.scenario)) out.scenario = search.scenario
     return out
   },
   head: () => ({ meta: [{ title: `${ASSISTANT_NAME} · Spotkanie na żywo` }] }),
@@ -444,12 +447,14 @@ function MeetingScreen() {
 
     if (search.new) {
       const fresh = newSessionId()
+      const chosen = search.scenario ? SCENARIOS.find((sc) => sc.id === search.scenario) : undefined
+      if (chosen) setScenarioId(chosen.id)
       try {
         window.localStorage.removeItem(STORAGE_KEY)
       } catch {
         /* ignore */
       }
-      syncSession({ data: { sessionId: fresh, title: scenario.title, lines: [], reset: true } }).catch(() => {})
+      syncSession({ data: { sessionId: fresh, title: (chosen ?? scenario).title, company: (chosen ?? scenario).company, lines: [], reset: true } }).catch(() => {})
       setSessionId(fresh)
       keepUrl(fresh)
       if (present) openDeck(present, 0)
@@ -503,7 +508,7 @@ function MeetingScreen() {
   }, [state, sessionId, scenarioId, cursor])
 
   const meetingInfo = useMemo(
-    () => ({ title: scenario.title, goal: scenario.goal, participants: scenario.participantIds.map(speakerLabel) }),
+    () => ({ title: scenario.title, goal: scenario.goal, participants: scenario.participantIds.map(speakerLabel), company: scenario.company }),
     [scenario],
   )
 
@@ -515,13 +520,13 @@ function MeetingScreen() {
       const batch = [...all.slice(synced.current), ...(extra ?? [])]
       if (batch.length === 0) return
       const upTo = all.length
-      syncSession({ data: { sessionId, title: meetingInfo.title, lines: batch } })
+      syncSession({ data: { sessionId, title: meetingInfo.title, company: meetingInfo.company, lines: batch } })
         .then(() => {
           synced.current = Math.max(synced.current, upTo)
         })
         .catch(() => {})
     },
-    [sessionId, meetingInfo.title],
+    [sessionId, meetingInfo.title, meetingInfo.company],
   )
 
   const trayItems = useMemo((): TrayItem[] => {
@@ -555,7 +560,7 @@ function MeetingScreen() {
         if (r.kind === 'sent') return [{ key, kind: 'email', title: `Wysłano: ${r.draft.subject}`, subtitle: r.draft.to.join(', '), status: 'done' }]
         if (r.kind === 'task') {
           const running = r.status === 'queued' || r.status === 'running'
-          return [{ key, kind: 'report', title: r.title ?? r.question, subtitle: running ? undefined : r.question, status: running ? 'running' : fresh ? 'fresh' : 'done', seconds: running ? Math.round((Date.now() - r.startedAt) / 1000) : undefined }]
+          return [{ key, kind: r.category === 'website' ? 'website' : 'report', title: r.title ?? r.question, subtitle: running ? r.label : r.question, status: running ? 'running' : fresh ? 'fresh' : 'done', seconds: running ? Math.round((Date.now() - r.startedAt) / 1000) : undefined }]
         }
         const first = r.attachments.find((a) => a.type !== 'citations')
         const kind: TrayItem['kind'] =
@@ -565,7 +570,8 @@ function MeetingScreen() {
       })
   }, [state.history, state.current, state.results, state.fresh, state.cards, catalog, decks, deckList])
 
-  const freshItems = useMemo(() => trayItems.filter((t) => t.status === 'fresh'), [trayItems])
+  /** Background work only: running, or finished and not yet looked at. History itself is the page stack. */
+  const activeItems = useMemo(() => trayItems.filter((t) => t.status !== 'done'), [trayItems])
 
   /** Moves the page stack by whole screens; the room says "przesuń w górę" instead of touching anything. */
   const scrollPages = useCallback((direction: -1 | 1) => {
@@ -903,7 +909,7 @@ function MeetingScreen() {
     synced.current = 0
     const fresh = newSessionId()
     setSessionId(fresh)
-    syncSession({ data: { sessionId: fresh, title: meetingInfo.title, lines: [], reset: true } }).catch(() => {})
+    syncSession({ data: { sessionId: fresh, title: meetingInfo.title, company: meetingInfo.company, lines: [], reset: true } }).catch(() => {})
     try {
       window.localStorage.removeItem(STORAGE_KEY)
     } catch {
@@ -961,7 +967,10 @@ function MeetingScreen() {
       if (h.kind === 'card' || h.kind === 'person') return Boolean(state.cards[cardKey(h.kind, h.id, h.facet)]) || Boolean(state.current && sameTarget(state.current, h))
       if (h.kind === 'presentation') return false
       const e = state.results[h.id]
-      return Boolean(e && !(e.status === 'error' && SILENT_ERRORS.has(e.error)))
+      if (!e) return false
+      // Background work still running lives on the card to the left, not as a page.
+      if (e.status === 'done' && e.result.kind === 'task' && (e.result.status === 'running' || e.result.status === 'queued')) return false
+      return !(e.status === 'error' && SILENT_ERRORS.has(e.error))
     },
     [state.results, state.cards, state.current],
   )
@@ -1002,22 +1011,8 @@ function MeetingScreen() {
           <ArrowLeftIcon className="size-4" /> Dashboard
         </Link>
 
-        {/* Background work that finished while something else was on screen: one tap or "Bolek, otwórz raport" brings it up. */}
-        {!state.focus && freshItems.length > 0 && (
-          <div className="absolute top-4 right-4 z-30 flex flex-col items-end gap-2 md:right-6">
-            {freshItems.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => openTrayItem(item)}
-                className="flex max-w-xs items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm text-foreground shadow-sm outline-none animate-in fade-in slide-in-from-top-2 hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                <SparklesIcon className="size-3.5 shrink-0 text-primary" />
-                <span className="truncate">Gotowe: {item.title}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Left: background agents at work, and finished ones nobody has looked at yet. A tap or "Bolek, otwórz raport" brings one up. */}
+        {!state.focus && activeItems.length > 0 && <Tray items={activeItems} onOpen={openTrayItem} className="absolute top-1/2 left-4 z-20 w-56 -translate-y-1/2 md:left-6" />}
 
         {/* The orb: centre stage when idle, docked at the top while something is shown. */}
         <div

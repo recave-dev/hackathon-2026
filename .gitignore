@@ -14,6 +14,7 @@ todos.json
 *.sqlite
 !knowledge/synthetic/demo-v3-2025-05-12.sqlite
 !knowledge/synthetic/demo-v3-2025-11-19.sqlite
+!knowledge/bielsko/bielsko-ai.sqlite
 *.sqlite-shm
 *.sqlite-wal
 

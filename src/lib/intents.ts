@@ -35,7 +35,7 @@ export const INTENTS: IntentSpec[] = [
   },
   {
     id: 'ask_company',
-    hint: 'A question about the company and its records: a cost, invoice, budget or price; who owns, approved or decided something; a deadline or date; a status, result or KPI; a decision and its options; a customer, vendor, product or contract. "ile płacimy za X", "kto to zatwierdził", "jak wyszedł pilot", "jakie mamy opcje".',
+    hint: 'A question about the company and its own records: a cost, invoice, budget or price; who owns, approved or decided something; a deadline or date; a status, result, statistics or KPI of our events and projects; a decision and its options; a customer, vendor, product or contract; venues, places or suppliers we gathered offers from for our own event. "ile płacimy za X", "kto to zatwierdził", "jak wyszedł pilot", "jakie mamy opcje", "znajdź lokale na nasz meetup", "porównaj statystyki 001 i 002".',
     label: 'Sprawdzam dane firmy',
   },
   {
@@ -45,12 +45,12 @@ export const INTENTS: IntentSpec[] = [
   },
   {
     id: 'ask_web',
-    hint: 'Needs fresh outside information from the internet: exchange rates, news, regulations, competitors, public facts about other companies or products, "sprawdź w internecie", "jaki jest dzisiaj kurs euro".',
+    hint: 'Needs fresh outside information that cannot be in the company records: exchange rates, news, regulations, competitors, public facts about other companies or products, "sprawdź w internecie", "jaki jest dzisiaj kurs euro". Not for places, venues, vendors or events the company itself deals with.',
     label: 'Szukam w internecie',
   },
   {
     id: 'produce',
-    hint: 'Asks the assistant to make something: write or send an email or message to someone, a document or memo, a chart, a report, a screenshot of a web page, "napisz maila do X", "przygotuj raport", "narysuj wykres", "pokaż nasz landing".',
+    hint: 'Asks the assistant to make or change something: write or send an email or message to someone, a document or memo, a chart, a report, a graphic or poster, a screenshot of a web page, an update of our website, "napisz maila do X", "przygotuj raport", "narysuj wykres", "zrób grafikę", "zaktualizuj stronę", "pokaż nasz landing".',
     label: 'Przygotowuję',
   },
   { id: 'ask', hint: 'Anything else: general knowledge, a definition or explanation, a calculation, small talk with the assistant.', label: 'Sprawdzam' },

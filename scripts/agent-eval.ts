@@ -38,5 +38,5 @@ for (const r of requests) {
   if (res.headline) console.log(`   ▶ ${res.headline}`)
   console.log(`   ${res.answer}`)
   for (const b of res.bullets) console.log(`   • ${b}`)
-  for (const a of res.attachments) console.log(`   [${a.type}] ${a.type === 'screenshot' ? a.pageUrl : a.type === 'document' ? a.title : a.type === 'chart' ? a.spec.title : a.type === 'email_draft' ? `${a.to.join(', ')} · ${a.subject}` : a.type === 'task' ? a.task.taskId : a.type === 'note' ? a.note.title : `${a.items.length} cytatów`}`)
+  for (const a of res.attachments) console.log(`   [${a.type}] ${a.type === 'screenshot' ? a.pageUrl : a.type === 'document' ? a.title : a.type === 'chart' ? a.spec.title : a.type === 'email_draft' ? `${a.to.join(', ')} · ${a.subject}` : a.type === 'task' ? a.task.taskId : a.type === 'note' ? a.note.title : a.type === 'table' ? a.title : a.type === 'image' ? a.url : `${a.items.length} cytatów`}`)
 }

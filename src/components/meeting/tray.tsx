@@ -4,7 +4,7 @@ import type { ComponentType } from 'react'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
-export type TrayKind = 'person' | 'card' | 'answer' | 'data' | 'web' | 'note' | 'report' | 'screenshot' | 'chart' | 'document' | 'email' | 'presentation'
+export type TrayKind = 'person' | 'card' | 'answer' | 'data' | 'web' | 'note' | 'report' | 'website' | 'screenshot' | 'chart' | 'document' | 'email' | 'presentation'
 
 export interface TrayItem {
   key: string
@@ -26,6 +26,7 @@ const ICON: Record<TrayKind, ComponentType<{ className?: string }>> = {
   web: GlobeIcon,
   note: NotebookPenIcon,
   report: FileTextIcon,
+  website: GlobeIcon,
   screenshot: ImageIcon,
   chart: BarChart3Icon,
   document: FileTextIcon,
@@ -41,6 +42,7 @@ const KIND_LABEL: Record<TrayKind, string> = {
   web: 'Internet',
   note: 'Notatka',
   report: 'Raport',
+  website: 'Strona',
   screenshot: 'Strona',
   chart: 'Wykres',
   document: 'Dokument',

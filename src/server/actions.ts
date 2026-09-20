@@ -44,6 +44,8 @@ export interface TaskResult {
   label: string
   startedAt: number
   finishedAt?: number
+  /** What kind of background work: a written report (default) or a website change. */
+  category?: 'report' | 'website'
   /** Markdown, when done. */
   markdown?: string
   title?: string
@@ -115,7 +117,7 @@ interface RawReport {
 }
 
 /** Writes a report in the background from a brief and the transcript so far. */
-export function startReportTask(request: string, transcript: TranscriptLine[]): TaskResult {
+export function startReportTask(request: string, transcript: TranscriptLine[], company?: string | null): TaskResult {
   const input = { request, transcript: [...transcript, { id: 'brief', speaker: 'brief', text: request, at: Date.now(), addressed: true }] }
   const taskId = `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
   const task: TaskResult = {
@@ -131,7 +133,7 @@ export function startReportTask(request: string, transcript: TranscriptLine[]): 
   void (async () => {
     try {
       // Pull whatever the graph knows about the request so the report has real numbers.
-      const graph = await answerFromGraph({ question: input.request }).catch(() => undefined)
+      const graph = await answerFromGraph({ question: input.request, company }).catch(() => undefined)
       const evidence = graph?.citations.map((c) => `[${c.id}] ${c.path}${c.date ? ` (${c.date})` : ''}\n${c.quote}`).join('\n\n') ?? ''
       const system = `You are ${ASSISTANT_NAME}, preparing a written document for a Polish company's board after a meeting. Write in Polish, in Markdown. Be structured and concrete: headings, short paragraphs, bullet lists, a table where numbers compare. Use only facts from the transcript and the company data given; mark anything uncertain as such. Do not invent numbers. 250-500 words.
 Return only JSON: {"title": string, "markdown": string}`
@@ -150,5 +152,41 @@ Return only JSON: {"title": string, "markdown": string}`
     }
   })()
 
+  return task
+}
+
+/**
+ * Demo: a website update running "in the background". Nothing is pushed
+ * anywhere; the task walks through realistic steps over about a minute
+ * (`WEBSITE_TASK_MS`) and ends with a summary of what a real run would do.
+ */
+export function startWebsiteTask(changes: string, company?: string | null): TaskResult {
+  const taskId = `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+  const site = company === 'bielsko' ? 'bielsko.ai' : 'strona firmy'
+  const repo = company === 'bielsko' ? 'bielsko-ai/bielsko.ai' : 'company/website'
+  const total = Number(process.env.WEBSITE_TASK_MS) || 60000
+  const task: TaskResult = { kind: 'task', taskId, category: 'website', question: `Aktualizacja ${site}: ${changes}`, status: 'running', label: `Klonuję repozytorium ${repo}`, startedAt: Date.now() }
+  tasks.set(taskId, task)
+  const steps: [number, string][] = [
+    [0.15, 'Czytam src/content/next-meetup.json'],
+    [0.3, 'Wpisuję datę, godzinę i miejsce'],
+    [0.45, 'Uruchamiam build strony'],
+    [0.7, 'Otwieram pull request'],
+    [0.85, 'Wdrażam podgląd na Netlify'],
+  ]
+  for (const [at, label] of steps) setTimeout(() => { const t = tasks.get(taskId); if (t && t.status === 'running') tasks.set(taskId, { ...t, label }) }, Math.round(total * at))
+  setTimeout(() => {
+    const t = tasks.get(taskId)
+    if (!t || t.status !== 'running') return
+    const pr = 40 + Math.floor(Math.random() * 20)
+    tasks.set(taskId, {
+      ...t,
+      status: 'done',
+      finishedAt: Date.now(),
+      title: `Strona ${site} zaktualizowana`,
+      label: 'Gotowe',
+      markdown: `## Co się zmieniło\n\n${changes}\n\n| Krok | Wynik |\n| --- | --- |\n| Plik | src/content/next-meetup.json |\n| Pull request | #${pr} w ${repo} |\n| Podgląd | https://deploy-preview-${pr}--${repo.split('/')[0]}.netlify.app |\n| Status | czeka na review i scalenie do main |\n\nPo scaleniu strona wdroży się automatycznie w około 2 minuty.`,
+    })
+  }, total)
   return task
 }

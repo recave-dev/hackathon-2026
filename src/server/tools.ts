@@ -1,5 +1,5 @@
 import { ASSISTANT_NAME } from '../lib/wake-word.ts'
-import { startReportTask, summarizeLines, type NoteResult, type TaskResult } from './actions.ts'
+import { startReportTask, startWebsiteTask, summarizeLines, type NoteResult, type TaskResult } from './actions.ts'
 import { screenshotPage } from './browser.ts'
 import { DIRECTORY, findContacts } from './directory.ts'
 import { openGraph, retrieveChunks, spendTotals } from './graph-answer.ts'
@@ -31,6 +31,8 @@ export type Attachment =
   | { type: 'task'; task: TaskResult }
   | { type: 'note'; note: NoteResult }
   | { type: 'citations'; items: { id: string; quote: string; path: string; date: string | null }[] }
+  | { type: 'table'; title: string; columns: string[]; rows: string[][]; highlight?: string }
+  | { type: 'image'; url: string; prompt: string; title: string }
 
 export interface ToolContext {
   session: Session
@@ -68,8 +70,8 @@ const companyKnowledge: ToolDef = {
     },
     required: ['query'],
   },
-  async run(args) {
-    const g = openGraph()
+  async run(args, ctx) {
+    const g = openGraph(ctx.session.company)
     const query = str(args.query, 300)
     const kind = str(args.entity_kind) || 'any'
     const nodes = g.searchNodes(query, 12).filter((n) => kind === 'any' || n.kind === kind)
@@ -108,8 +110,8 @@ const listEntities: ToolDef = {
     properties: { kind: { type: 'string', enum: ['person', 'organization', 'product', 'decision', 'option', 'claim', 'observation', 'metric', 'action'] } },
     required: ['kind'],
   },
-  async run(args) {
-    const g = openGraph()
+  async run(args, ctx) {
+    const g = openGraph(ctx.session.company)
     const kind = str(args.kind)
     const nodes = g.getGraphSnapshot().nodes.filter((n) => n.kind === kind)
     if (!nodes.length) return { content: `No entities of kind ${kind}. Known kinds: ${[...new Set(g.getGraphSnapshot().nodes.map((n) => n.kind))].join(', ')}.` }
@@ -121,8 +123,8 @@ const getEntity: ToolDef = {
   name: 'get_entity',
   description: 'Everything the graph holds about one entity: attributes, its relations to other entities, and the quoted evidence behind it. Use the id from company_knowledge or list_entities.',
   parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-  async run(args) {
-    const g = openGraph()
+  async run(args, ctx) {
+    const g = openGraph(ctx.session.company)
     const id = str(args.id, 200)
     const node = g.getNode(id)
     if (!node) return { content: `No entity with id ${id}.` }
@@ -147,11 +149,11 @@ const findContact: ToolDef = {
   name: 'find_contact',
   description: `Look up a colleague's email address by name, in any Polish form ("Tomasza Kielara", "do Michała", "Kielar"). Always use this before draft_email when the room names a person instead of an address. Known people: ${DIRECTORY.map((p) => p.name).join(', ')}.`,
   parameters: { type: 'object', properties: { name: { type: 'string', description: 'The name as said, one or more people.' } }, required: ['name'] },
-  async run(args) {
+  async run(args, ctx) {
     const query = str(args.name, 200)
     const hits = findContacts(query)
     // People from the graph itself (seeded or extracted) that carry an email.
-    const g = openGraph()
+    const g = openGraph(ctx.session.company)
     const fromGraph = g
       .getGraphSnapshot()
       .nodes.filter((n) => n.kind === 'person' && n.attributes.email && !DIRECTORY.some((d) => d.id === n.id))
@@ -301,12 +303,56 @@ const writeReport: ToolDef = {
   description: 'Start writing a longer report (several sections, tables) in the background from the meeting transcript and company data. Returns at once with a task id; the room sees the task in the tray and gets the document when it is done (20-40 s). Use for "przygotuj raport", "zrób zestawienie na następne spotkanie".',
   parameters: { type: 'object', properties: { brief: { type: 'string', description: 'What the report should cover, in one or two sentences.' } }, required: ['brief'] },
   async run(args, ctx) {
-    const task = startReportTask(str(args.brief, 600), ctx.session.lines)
+    const task = startReportTask(str(args.brief, 600), ctx.session.lines, ctx.session.company)
     return { content: `Report task ${task.taskId} started in the background. Tell the room it will land in the tray when ready; do not wait for it.`, attachments: [{ type: 'task', task }] }
   },
 }
 
-export const TOOLS: ToolDef[] = [companyKnowledge, listEntities, getEntity, findContact, searchWeb, pageScreenshot, draftEmail, createDocument, meetingNotes, chart, writeReport]
+const compareTable: ToolDef = {
+  name: 'compare_table',
+  description: 'Put a comparison table on the screen: options as rows, criteria as columns (venues by capacity, cost, AV, notes; vendors by price and terms). Use whenever the room compares two or more things. The table must fit a TV screen: at most 5 columns, cells of at most 8 words, no full sentences. Cells hold only facts from tools or the transcript; write "brak danych" otherwise.',
+  parameters: {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      columns: { type: 'array', items: { type: 'string' }, description: 'Header cells, Polish; the first names the rows (e.g. "Miejsce").' },
+      rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'One array per row, same length as columns.' },
+      highlight: { type: 'string', description: 'Row label to mark as recommended or chosen, if any.' },
+    },
+    required: ['title', 'columns', 'rows'],
+  },
+  async run(args) {
+    const columns = list(args.columns, 8)
+    const rows = (Array.isArray(args.rows) ? args.rows : []).slice(0, 12).map((r) => list(r, 8))
+    if (columns.length < 2 || rows.length === 0) return { content: 'Table needs at least two columns and one row.' }
+    const title = str(args.title, 100) || 'Porównanie'
+    const highlight = str(args.highlight, 80) || undefined
+    return { content: `Table "${title}" (${rows.length} rows × ${columns.length} columns) is on screen. Summarise the key difference in one sentence; do not repeat the table.`, attachments: [{ type: 'table', title, columns, rows, highlight }] }
+  },
+}
+
+const generateImage: ToolDef = {
+  name: 'generate_image',
+  description: 'Generate a graphic (event poster, social banner) from a text prompt; takes about 10 seconds and shows the image on screen. Use for "zrób grafikę", "przygotuj plakat", "obrazek na meetup". Put the event name, date, time and venue in the prompt when known.',
+  parameters: { type: 'object', properties: { prompt: { type: 'string', description: 'What the image should show, in English, with the exact text to render.' }, title: { type: 'string', description: 'Short Polish caption, e.g. "Plakat: bielsko.ai 003".' } }, required: ['prompt'] },
+  async run(args) {
+    const { generatePoster } = await import('./images.ts')
+    const img = await generatePoster(str(args.prompt, 600))
+    return { content: `Image generated (${img.width}×${img.height}) and shown on screen. Say it is ready in one sentence; do not describe details you cannot see.`, attachments: [{ type: 'image', url: img.url, prompt: img.prompt, title: str(args.title, 100) || 'Grafika' }] }
+  },
+}
+
+const updateWebsite: ToolDef = {
+  name: 'update_website',
+  description: 'Update the company website in the background: edit the content, open a pull request, deploy a preview. Returns at once with a task id; the room sees the progress in the side card and the summary when done (about a minute). Use for "zaktualizuj stronę", "wrzuć na stronę datę i miejsce".',
+  parameters: { type: 'object', properties: { changes: { type: 'string', description: 'What should change on the site, concretely: fields and new values (edition, date, time, venue, link).' } }, required: ['changes'] },
+  async run(args, ctx) {
+    const task = startWebsiteTask(str(args.changes, 600), ctx.session.company)
+    return { content: `Website update task ${task.taskId} started in the background (about a minute); the card on the left of the screen shows its progress. Tell the room it is running and what will change; do not wait for it.`, attachments: [{ type: 'task', task }] }
+  },
+}
+
+export const TOOLS: ToolDef[] = [companyKnowledge, listEntities, getEntity, findContact, searchWeb, pageScreenshot, draftEmail, createDocument, meetingNotes, chart, compareTable, generateImage, writeReport, updateWebsite]
 
 export const toolByName = (name: string): ToolDef | undefined => TOOLS.find((t) => t.name === name)
 

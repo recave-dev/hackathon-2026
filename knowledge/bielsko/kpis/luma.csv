@@ -1,0 +1,10 @@
+observation_id,date,meetup,metric,value,unit,source_note
+meetup-001-cap,2026-04-23,meetup-001,capacity,60,people,Luma event cap (max capacity reached)
+meetup-001-going,2026-04-23,meetup-001,going,62,people,Luma "Going"
+meetup-001-checked-in,2026-04-23,meetup-001,checked_in,30,people,Luma "Checked In"
+meetup-001-waitlist,2026-04-23,meetup-001,waitlist,16,people,Luma "Waiting List"
+meetup-001-invited,2026-04-23,meetup-001,invited,1,people,Luma "Invited"
+meetup-002-cap,2026-06-18,meetup-002,capacity,100,people,Luma event cap
+meetup-002-going,2026-06-18,meetup-002,going,94,people,Luma "Going"
+meetup-002-checked-in,2026-06-18,meetup-002,checked_in,52,people,Luma "Checked In"
+meetup-002-waitlist,2026-06-18,meetup-002,waitlist,0,people,Luma (cap not reached)

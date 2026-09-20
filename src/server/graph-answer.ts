@@ -41,19 +41,28 @@ export interface GraphAnswer {
   error?: string
 }
 
-const GRAPH_PATH = process.env.GRAPH_DB ?? 'knowledge/synthetic/demo-v3-2025-11-19.sqlite'
+/** One SQLite graph per company; a session names which one it is about. */
+const GRAPHS: Record<string, string> = {
+  aster: process.env.GRAPH_DB ?? 'knowledge/synthetic/demo-v3-2025-11-19.sqlite',
+  bielsko: process.env.GRAPH_DB_BIELSKO ?? 'knowledge/bielsko/bielsko-ai.sqlite',
+}
+export const DEFAULT_COMPANY = 'aster'
+export const COMPANIES = Object.keys(GRAPHS)
 const MAX_CHUNKS = 14
 const QUOTE_CHARS = 700
 
-let graph: KnowledgeGraph | undefined
-let digestCache: { text: string; nodes: number; edges: number } | undefined
+const graphs: Map<string, KnowledgeGraph> = ((globalThis as { __bolekGraphs?: Map<string, KnowledgeGraph> }).__bolekGraphs ??= new Map())
+const digests = new WeakMap<KnowledgeGraph, { text: string; nodes: number; edges: number }>()
 
-export function openGraph(): KnowledgeGraph {
-  if (graph) return graph
-  const path = resolve(process.cwd(), GRAPH_PATH)
+export function openGraph(company?: string | null): KnowledgeGraph {
+  const key = company && GRAPHS[company] ? company : DEFAULT_COMPANY
+  const cached = graphs.get(key)
+  if (cached) return cached
+  const path = resolve(process.cwd(), GRAPHS[key]!)
   if (!existsSync(path)) throw new Error(`Graph database not found at ${path}`)
-  graph = new KnowledgeGraph(path)
+  const graph = new KnowledgeGraph(path)
   ensureDirectory(graph)
+  graphs.set(key, graph)
   return graph
 }
 
@@ -64,7 +73,8 @@ const attrs = (n: GraphNode): string => {
 
 /** Every node and edge, compact, grouped by kind. Cached for the life of the process. */
 export function graphDigest(g: KnowledgeGraph): { text: string; nodes: number; edges: number } {
-  if (digestCache) return digestCache
+  const cached = digests.get(g)
+  if (cached) return cached
   const { nodes, edges } = g.getGraphSnapshot()
   const byKind = new Map<string, GraphNode[]>()
   for (const n of nodes) byKind.set(n.kind, [...(byKind.get(n.kind) ?? []), n])
@@ -80,8 +90,9 @@ export function graphDigest(g: KnowledgeGraph): { text: string; nodes: number; e
   }
   lines.push(`## edges (${edges.length})`)
   for (const e of edges) lines.push(`- ${label.get(e.from) ?? e.from} —${e.relation}→ ${label.get(e.to) ?? e.to}`)
-  digestCache = { text: lines.join('\n'), nodes: nodes.length, edges: edges.length }
-  return digestCache
+  const digest = { text: lines.join('\n'), nodes: nodes.length, edges: edges.length }
+  digests.set(g, digest)
+  return digest
 }
 
 /** Deterministic arithmetic for every metric, so the model quotes totals instead of adding. */
@@ -144,9 +155,9 @@ interface RawAnswer {
   found?: unknown
 }
 
-export async function answerFromGraph(input: { question: string; recent?: string[] }): Promise<GraphAnswer> {
+export async function answerFromGraph(input: { question: string; recent?: string[]; company?: string | null }): Promise<GraphAnswer> {
   const started = performance.now()
-  const g = openGraph()
+  const g = openGraph(input.company)
   const digest = graphDigest(g)
   const chunks = retrieveChunks(g, input.question, input.recent ?? [])
   const citations: Citation[] = chunks.map((c, i) => ({
